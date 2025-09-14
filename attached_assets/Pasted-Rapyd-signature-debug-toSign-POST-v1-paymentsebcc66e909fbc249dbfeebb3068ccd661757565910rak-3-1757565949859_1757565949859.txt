@@ -1,0 +1,23 @@
+Rapyd signature debug: {
+  toSign: 'POST/v1/paymentsebcc66e909fbc249dbfeebb3068ccd661757565910rak_3AD8A3D096E927F2721Arsk_1cf02cc1c02f1efd0e7353e6f4843a8e1f12f9c826b21ae46777cf6c7f97e281d0540341c71e5551{"amount":"23.87","currency":"USD","payment_method":{"type":"card","fields":{"number":"5454 5454 5454 5454","expiration_month":"12","expiration_year":"2030","cvv":"123","name":"Wesley Leck"}},"merchant_reference_id":"9226b60f-42c1-4277-98dd-84ac8c914ffd","description":"Yah Ride Payment - YahChoice"}',
+  signature: '1c7262c57b46cfbedad3ccf9876d8e3e0f795729721e3eebf6804e8513287432'
+}
+Rapyd API response error: {
+  status: {
+    error_code: 'UNAUTHENTICATED_API_CALL',
+    status: 'ERROR',
+    message: 'The API received a request, but the signature did not match. The request was rejected. Corrective action: (1) Remove all whitespace that is not inside a string. (2) Remove trailing zeroes and decimal points, or wrap numbers in a string.',
+    response_code: 'UNAUTHENTICATED_API_CALL',
+    operation_id: '5bc1e3b4-be3c-49e0-b9c5-4819af91193d'
+  }
+}
+Rapyd API request failed: Error: Rapyd API Error: The API received a request, but the signature did not match. The request was rejected. Corrective action: (1) Remove all whitespace that is not inside a string. (2) Remove trailing zeroes and decimal points, or wrap numbers in a string.
+    at rapydRequest (/home/runner/workspace/server/rapyd.ts:71:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async RapydClient.createPayment (/home/runner/workspace/server/rapyd.ts:131:12)
+    at async WiseService.processCardPayment (/home/runner/workspace/server/wiseService.ts:54:28)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:203:29)
+Rapyd payment processing error: Error: Rapyd API Error: The API received a request, but the signature did not match. The request was rejected. Corrective action: (1) Remove all whitespace that is not inside a string. (2) Remove trailing zeroes and decimal points, or wrap numbers in a string.
+    at rapydRequest (/home/runner/workspace/server/rapyd.ts:71:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async RapydClient.createPayment (/home/runner/workspace/server/rapyd.ts:131:12)

@@ -1,0 +1,138 @@
+{
+  "name": "Yah™ Customer - Premium Ride Experience",
+  "short_name": "Yah™ Customer",
+  "description": "Premium taxi booking app with luxury ride options and AI assistance",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0066cc",
+  "background_color": "#f8f9fa",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["transportation", "travel", "lifestyle"],
+  "shortcuts": [
+    {
+      "name": "Book Ride",
+      "short_name": "Book",
+      "description": "Quickly book a new ride",
+      "url": "/booking",
+      "icons": [
+        {
+          "src": "/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "My Rides",
+      "short_name": "Rides",
+      "description": "View your ride history",
+      "url": "/rides",
+      "icons": [
+        {
+          "src": "/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Message",
+      "short_name": "Message",
+      "description": "Get help from AI assistant",
+      "url": "/chat",
+      "icons": [
+        {
+          "src": "/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Payment",
+      "short_name": "Payment",
+      "description": "Manage payment methods",
+      "url": "/payment",
+      "icons": [
+        {
+          "src": "/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile-1.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Yah™ Customer home screen with ride booking interface"
+    },
+    {
+      "src": "/screenshot-mobile-2.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Real-time ride tracking with driver information"
+    }
+  ],
+  "share_target": {
+    "action": "/share-location",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "protocol_handlers": [
+    {
+      "protocol": "web+yah",
+      "url": "/?action=%s"
+    }
+  ],
+  "prefer_related_applications": false,
+  "related_applications": [
+    {
+      "platform": "play",
+      "url": "https://play.google.com/store/apps/details?id=com.yahrides.customer",
+      "id": "com.yahrides.customer"
+    },
+    {
+      "platform": "itunes",
+      "url": "https://apps.apple.com/app/yah-customer/id123456789",
+      "id": "123456789"
+    }
+  ],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  }
+}

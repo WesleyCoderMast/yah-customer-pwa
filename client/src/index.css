@@ -1,0 +1,420 @@
+/* Leaflet CSS Import */
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Light Mode - Exact Colors Specified */
+  --background: 0 0% 95%; /* #f2f2f2 */
+  --foreground: 210 100% 20%; /* #003366 */
+  --card: 225 33% 98%; /* #f7f8fb */
+  --card-foreground: 210 100% 20%; /* #003366 */
+  --popover: 225 33% 98%; /* #f7f8fb */
+  --popover-foreground: 210 100% 20%; /* #003366 */
+  --primary: 210 100% 20%; /* #003366 */
+  --primary-foreground: 0 0% 100%; /* white */
+  --secondary: 225 33% 98%; /* #f7f8fb */
+  --secondary-foreground: 210 100% 20%; /* #003366 */
+  --muted: 214 32% 91%; /* #e2e8f0 */
+  --muted-foreground: 210 100% 15%; /* darker blue */
+  --accent: 142 69% 58%; /* #28a745 green accent */
+  --accent-foreground: 0 0% 100%; /* white */
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214 32% 91%; /* #e2e8f0 */
+  --input: 214 32% 91%; /* #e2e8f0 */
+  --ring: 210 100% 20%; /* #003366 */
+  --radius: 0.75rem;
+  --chart-1: 12 76% 61%;
+  --chart-2: 173 58% 39%;
+  --chart-3: 197 37% 24%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 27 87% 67%;
+
+  --font-sans: "Inter", sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: ui-monospace, monospace;
+}
+
+.dark {
+  /* Dark Mode - Exact Colors Specified */
+  --background: 211 100% 10%; /* #001832 */
+  --foreground: 0 0% 100%; /* white */
+  --card: 210 100% 8%; /* #00152a */
+  --card-foreground: 0 0% 100%; /* white */
+  --popover: 210 100% 8%; /* #00152a */
+  --popover-foreground: 0 0% 100%; /* white */
+  --primary: 0 0% 100%; /* white */
+  --primary-foreground: 210 100% 20%; /* #003366 */
+  --secondary: 210 100% 8%; /* #00152a */
+  --secondary-foreground: 0 0% 100%; /* white */
+  --muted: 217 33% 17%; /* #1e293b */
+  --muted-foreground: 0 0% 70%; /* light gray */
+  --accent: 142 69% 58%; /* #28a745 green accent */
+  --accent-foreground: 0 0% 100%; /* white */
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 33% 17%; /* #1e293b */
+  --input: 217 33% 17%; /* #1e293b */
+  --ring: 0 0% 100%; /* white */
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  /* Ensure border colors are properly applied */
+  .border-border {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  /* Mobile touch improvements */
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Better touch targets for mobile */
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Fix for AssistLoop widget positioning */
+  #assistloop-widget, 
+  [class*="assistloop"],
+  [id*="assistloop"] {
+    z-index: 999 !important;
+  }
+
+  /* Complete style restoration for switches - match original exactly */
+  .yah-switch-container button[role="switch"] {
+    all: unset !important;
+    display: inline-flex !important;
+    height: 24px !important;
+    width: 44px !important;
+    border-radius: 12px !important;
+    background-color: #d1d5db !important; /* Light gray when OFF */
+    cursor: pointer !important;
+    position: relative !important;
+    align-items: center !important;
+    transition: background-color 0.2s ease-in-out !important;
+    box-sizing: border-box !important;
+  }
+
+  .yah-switch-container button[role="switch"][data-state="checked"] {
+    background-color: #1e3a8a !important; /* Deep blue when ON - matches original */
+  }
+
+  .yah-switch-container button[role="switch"] span {
+    all: unset !important;
+    display: block !important;
+    height: 20px !important;
+    width: 20px !important;
+    border-radius: 50% !important;
+    background-color: white !important;
+    position: absolute !important;
+    left: 2px !important;
+    top: 2px !important;
+    transition: transform 0.2s ease-in-out !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+    transform: translateX(0) !important;
+    box-sizing: border-box !important;
+  }
+
+  .yah-switch-container button[role="switch"][data-state="checked"] span {
+    transform: translateX(20px) !important;
+  }
+
+  /* Additional protection against external CSS interference */
+  .yah-switch-container button[role="switch"] *,
+  .yah-switch-container button[role="switch"] *:before,
+  .yah-switch-container button[role="switch"] *:after {
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Ensure bottom navigation is always clickable */
+  nav[class*="bottom"] {
+    pointer-events: auto !important;
+  }
+
+  nav[class*="bottom"] a, 
+  nav[class*="bottom"] button,
+  nav[class*="bottom"] div[class*="cursor-pointer"] {
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+  }
+
+  /* Force proper border colors for headers and navigation */
+  header {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  .border-b {
+    border-bottom-color: hsl(var(--border)) !important;
+  }
+
+  .border-t {
+    border-top-color: hsl(var(--border)) !important;
+  }
+
+  /* Target bottom navigation specifically */
+  nav {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  /* Ensure exact color application */
+  .bg-background {
+    background-color: hsl(var(--background)) !important;
+  }
+
+  .bg-card {
+    background-color: hsl(var(--card)) !important;
+  }
+
+  .text-foreground {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .text-primary {
+    color: hsl(var(--primary)) !important;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* Disable text selection and context menu for security */
+  body {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Allow text selection for form inputs */
+  input, textarea, select {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+  }
+}
+
+@layer components {
+  /* Theme-aware backgrounds */
+  .bg-theme-background {
+    background-color: hsl(var(--background)) !important;
+  }
+
+  .bg-theme-card {
+    background-color: hsl(var(--card)) !important;
+  }
+
+  /* Driver app style backgrounds */
+  .bg-driver-light {
+    background-color: hsl(var(--background)) !important;
+  }
+
+  .bg-driver-surface {
+    background-color: hsl(var(--card)) !important;
+  }
+
+  /* Card shadows matching driver app with theme support */
+  .driver-card {
+    background-color: hsl(var(--card)) !important;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    border: 1px solid hsl(var(--border)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Avatar styling */
+  .driver-avatar {
+    background-color: var(--yah-avatar);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Status indicator */
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    background-color: white;
+    border-radius: 50%;
+  }
+
+  /* Gold shimmer animation */
+  .gold-shimmer {
+    background: linear-gradient(90deg, #D4AF37, #FFD700, #D4AF37);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+
+  /* Card hover effects */
+  .card-hover {
+    transition: all 0.3s ease;
+  }
+
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(212, 175, 55, 0.2);
+  }
+
+  /* Ripple effect */
+  .ripple {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ripple::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 215, 0, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+  }
+
+  .ripple:active::after {
+    width: 300px;
+    height: 300px;
+  }
+
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: var(--yah-muted);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--yah-gold);
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--yah-accent);
+  }
+}
+
+@layer utilities {
+  /* Yah brand colors */
+  .text-yah-gold {
+    color: var(--yah-gold);
+  }
+
+  .bg-yah-gold {
+    background-color: var(--yah-gold);
+  }
+
+  .text-yah-dark {
+    color: var(--yah-dark);
+  }
+
+  .bg-yah-dark {
+    background-color: var(--yah-dark);
+  }
+
+  .bg-yah-darker {
+    background-color: var(--yah-darker);
+  }
+
+  .bg-yah-muted {
+    background-color: var(--yah-muted);
+  }
+
+  .border-yah-gold {
+    border-color: var(--yah-gold);
+  }
+
+  /* Glass morphism effect */
+  .glass {
+    backdrop-filter: blur(10px);
+    background: rgba(26, 26, 26, 0.8);
+    border: 1px solid rgba(212, 175, 55, 0.2);
+  }
+
+  /* Animations */
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-bounce-slow {
+    animation: bounce 2s infinite;
+  }
+
+  /* Screen protection overlay */
+  .screen-protection {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--yah-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    color: var(--yah-gold);
+    font-size: 1.5rem;
+    font-weight: 600;
+    text-align: center;
+    padding: 2rem;
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes glow {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+  }
+  50% { 
+    box-shadow: 0 0 30px rgba(212, 175, 55, 0.8);
+  }
+}
+
+/* PWA specific styles */
+.pwa-install-prompt {
+  background: var(--yah-gold);
+  color: var(--yah-dark);
+  padding: 1rem;
+  border-radius: var(--radius);
+  margin: 1rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Prevent screenshot flash */
+@media print {
+  body { display: none !important; }
+}

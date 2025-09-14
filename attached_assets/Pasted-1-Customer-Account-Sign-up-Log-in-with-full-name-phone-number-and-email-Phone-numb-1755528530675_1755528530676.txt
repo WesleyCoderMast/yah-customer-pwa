@@ -1,0 +1,167 @@
+1️⃣ Customer Account
+• 👤 Sign up / Log in with full name, phone number, and email
+• 🔐 Phone number verification via OTP
+• 💳 Save payment methods: Credit/Debit, Apple Pay, Google Pay
+
+⸻
+
+2️⃣ Ride Request
+• 🚘 Book any Yah ride type (Now, Group, Travel, Event, etc.)
+• 📍 Enter exact pickup and drop-off pin location
+• 📅 Option to schedule a future ride
+
+⸻
+
+3️⃣ Ride Management
+• 🗺️ Track driver location in real time
+• 📲 Loud vibration and sound alert 1 minute before arrival
+• 🚨 Cancel ride (only allowed before the driver arrives)
+• 👍👎 Rate ride using thumbs up/down with optional emoji
+• 🧾 View detailed trip receipts and full ride history
+
+⸻
+
+4️⃣ Payments
+• 💰 Automatic fare calculation (no bargaining allowed)
+• 💸 Auto-charge to payment method after the ride ends
+• 💵 View receipts and transaction history
+
+⸻
+
+5️⃣ Safety & Support
+• 🚫 Report driver for any misconduct or unsafe behavior
+• 🔒 Driver and customer phone numbers are always hidden
+• 💬 YahChat (AI assistant) provides in-app support
+• ✉️ All issues are sent privately to admin@yahrides.com
+
+⸻
+
+6️⃣ Extra Features
+• 🕓 Schedule future rides
+• 🎟️ Apply coupons or promotions (if enabled by admin)
+• 🔄 View all active and past rides
+• 🛡️ Screenshots and screen recording are not allowed
+
+⸻
+
+7️⃣ Per Person & Per Pet Fees
+• 👥 Every person (any age) = ➕ $2
+• 🐶 Every pet = ➕ $5
+• 💡 System auto-calculates total fees based on number of people and pets
+• 🚫 Hiding extra people or pets = instant ban + no refund
+
+⸻
+
+8️⃣ Door Opening Preference
+• 🚪 Customers can request that the driver open the door
+• ✅ If the ride type requires door opening, the driver must open the door
+• ❌ If the ride type does not require it, driver will keep the door closed
+• 📘 See official ride rules for which categories require door opening
+
+⸻
+
+🔒 Ride Type Selection (Customer View)
+
+❗ Customers can only see and choose one ride category.
+❌ They are not allowed to browse all ride types.
+🚫 Prevent switching between categories without valid reason.
+
+⸻
+
+1. IN CITY ONLY (Short Distance – Within City)
+• 🚕 REGULAR RIDES
+• YahNow, YahGo, YahSwift, YahChoice, YahSolo, YahGroup, YahFamily, YahPet, YahQuiet, YahSilent
+• 🧍 INDIVIDUAL RIDES
+• YahYouth, YahYoungGirl, YahYoungBoy, YahMan, YahWoman, YahSenior, YahSingle
+• 💙 RELATIONSHIP RIDES
+• YahCouple, YahEngagement, YahUnion, YahDating, YahMarriage, YahWedding, YahMatch, YahPure
+• 🎉 SPECIAL EVENT RIDES
+• YahBirthday, YahValentine, YahParty, YahInvation
+• 🛡️ PROTECTED RIDES
+• YahArmy, YahMilitary, YahSecurity
+• 👑 LUXURY RIDES
+• YahRoyal, YahCelebrity, YahElite
+• 💼 SERVICE RIDES
+• YahBusiness, YahMedical
+
+⸻
+
+2. ✈️ TRAVEL RIDES (Long Distance – Out of City/State)
+• 🚘 BASIC TRAVEL
+• YahTravelNow, YahTravelGo, YahTravelSwift, YahTravelChoice
+• 🧍 INDIVIDUAL TRAVEL
+• YahTravelYouth, YahTravelYoungGirl, YahTravelYoungBoy, YahTravelMan, YahTravelWoman, YahTravelSenior, YahTravelSingle, YahTravelSolo
+• 🧑‍🤝‍🧑 GROUP TRAVEL
+• YahTravelGroup, YahTravelFamily
+• 💼 PURPOSE TRAVEL
+• YahTravelBusiness, YahTravelMedical
+• 💙 RELATIONSHIP TRAVEL
+• YahTravelEngagement, YahTravelUnion, YahTravelMarriage, YahTravelHoneymoon, YahTravelMatch, YahTravelPure
+• 🛡️ PROTECTED TRAVEL
+• YahTravelArmy, YahTravelMilitary, YahTravelSecurity
+• 👑 LUXURY TRAVEL
+• YahTravelRoyal, YahTravelCelebrity, YahTravelElite
+• 🔕 QUIET TRAVEL
+• YahTravelQuiet, YahTravelSilent
+
+⸻
+
+🚨 Mandatory Ride Rules for Customers
+• 👥 Enter exact number of people riding, even if it’s just yourself (e.g., “1 person”)
+• 🐾 Enter how many pets, if any (e.g., “2 pets”)
+• 💳 Must pay full per-person and per-pet fee before ride starts
+• ❌ If customer fails to pay correctly → ride is canceled
+• ❌ No refund is given for hiding passengers or pets
+• 🚪 System automatically determines if door opening is required
+• 🕒 After booking, customer must wait for driver – countdown timer begins
+• 🚗 App will show:
+• ✅ Driver’s full name (First + Last)
+• ✅ Driver’s license tag and vehicle match
+• ✅ Option to confirm driver’s identity before entering
+• 🧏 If driver is deaf → show “Deaf Driver – Please communicate respectfully by typing”
+• 👃 All customers must smell clean and fresh – no bad odors allowed
+• ✋ Absolutely no physical touch allowed with drivers
+• 🔁 Only thumbs up/down allowed – no long reviews
+• 💸 Tipping is required – no skipping allowed
+• 🚫 No refunds unless:
+• Driver failed to show up
+• Driver completely missed your pickup
+• ❗ All other cancellations = no refund
+
+⸻
+🛡️ 9️⃣ Yah App Screen Recording & Screenshot Protection
+
+(Applies to Yah Driver App + Yah Customer App)
+
+🚫 No Screenshots. No Screen Recording. No Exceptions.
+• 📵 All screenshots and screen recordings are permanently blocked in both apps
+• 🔒 This applies to every screen:
+• Ride details, payments, driver info, chat, receipts, identity, maps, YahChat, and support
+• 🧠 This system works exactly like Netflix, blocking any attempt to record visual content
+
+⸻
+
+⚙️ How It Works:
+• The Yah app automatically detects:
+• Screenshot button press
+• iOS/Android screen recording tools
+• Third-party screen capture apps
+• If triggered:
+• ❌ App hides all content (black screen)
+• ⚠️ Instant warning message:
+“Recording is disabled for security. Your session is being monitored.”
+
+⸻
+
+🔐 Why This Is Mandatory:
+• Protects driver and customer identity
+• Prevents copying Yah’s pricing, logic, and admin systems
+• Blocks fraud, harassment, and abuse of private ride information
+
+⸻
+
+⚖️ Violation Consequences:
+• Any user (driver or customer) who bypasses or tampers with screen blocking will be:
+• 🚫 Banned permanently
+• 💸 Receive no refund
+• 🛡️ Flagged and locked by admin@yahrides.com
