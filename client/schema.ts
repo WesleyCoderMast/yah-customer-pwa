@@ -41,12 +41,6 @@ export const rideStatusEnum = pgEnum("ride_status", [
   "cancelled"
 ]);
 
-export const payoutFrequencyEnum = pgEnum("payout_frequency", [
-  "daily",
-  "weekly",
-  "monthly"
-]);
-
 export const rideTypeEnum = pgEnum("ride_type", [
   "YahNow", "YahGo", "YahSwift", "YahChoice", "YahSolo", "YahGroup", "YahFamily", 
   "YahPet", "YahQuiet", "YahSilent", "YahYouth", "YahYoungGirl", "YahYoungBoy",
@@ -482,67 +476,6 @@ export type InsertRideRequest = z.infer<typeof insertRideRequestSchema>;
 export type YahChatSession = typeof yahChatSessions.$inferSelect;
 export type InsertYahChatSession = z.infer<typeof insertYahChatSessionSchema>;
 
-// Additional payment tables for Adyen integration
-export const adyenPayments = pgTable("adyen_payments", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  pspReference: varchar("psp_reference").notNull().unique(),
-  amount: integer("amount").notNull(), // Amount in minor units (cents)
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-  reference: varchar("reference").notNull(),
-  status: paymentStatusEnum("status").notNull().default("pending"),
-  paymentMethod: varchar("payment_method").notNull(),
-  shopperReference: varchar("shopper_reference"),
-  metadata: jsonb("metadata"),
-  capturedAt: timestamp("captured_at"),
-  refundedAt: timestamp("refunded_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const adyenPayouts = pgTable("adyen_payouts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  pspReference: varchar("psp_reference").notNull().unique(),
-  amount: integer("amount").notNull(), // Amount in minor units (cents)
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-  reference: varchar("reference").notNull(),
-  status: payoutStatusEnum("status").notNull().default("pending"),
-  destinationType: varchar("destination_type").notNull(),
-  description: text("description"),
-  metadata: jsonb("metadata"),
-  processedAt: timestamp("processed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const webhookEvents = pgTable("webhook_events", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  eventType: varchar("event_type").notNull(),
-  pspReference: varchar("psp_reference").notNull(),
-  merchantAccount: varchar("merchant_account").notNull(),
-  eventData: jsonb("event_data").notNull(),
-  processed: boolean("processed").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const ceoPayouts = pgTable("ceo_payouts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  ceoId: uuid("ceo_id").notNull(),
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-  bankAccount: jsonb("bank_account").notNull(),
-  status: payoutStatusEnum("status").notNull().default("pending"),
-  description: text("description"),
-  processedAt: timestamp("processed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-// Insert schemas for new tables
-export const insertAdyenPaymentSchema = createInsertSchema(adyenPayments);
-export const insertAdyenPayoutSchema = createInsertSchema(adyenPayouts);
-export const insertWebhookEventSchema = createInsertSchema(webhookEvents);
-export const insertCEOPayoutSchema = createInsertSchema(ceoPayouts);
-
 export type RapydBeneficiary = typeof rapydBeneficiaries.$inferSelect;
 export type InsertRapydBeneficiary = z.infer<typeof insertRapydBeneficiarySchema>;
 
@@ -551,19 +484,6 @@ export type InsertDriverPayout = z.infer<typeof insertDriverPayoutSchema>;
 
 export type PaymentSplit = typeof paymentSplits.$inferSelect;
 export type InsertPaymentSplit = z.infer<typeof insertPaymentSplitSchema>;
-
-// Adyen payment types
-export type AdyenPayment = typeof adyenPayments.$inferSelect;
-export type InsertAdyenPayment = z.infer<typeof insertAdyenPaymentSchema>;
-
-export type AdyenPayout = typeof adyenPayouts.$inferSelect;
-export type InsertAdyenPayout = z.infer<typeof insertAdyenPayoutSchema>;
-
-export type WebhookEvent = typeof webhookEvents.$inferSelect;
-export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
-
-export type CEOPayout = typeof ceoPayouts.$inferSelect;
-export type InsertCEOPayout = z.infer<typeof insertCEOPayoutSchema>;
 
 // Multi-vehicle booking helper types
 export interface MultiVehicleBooking {

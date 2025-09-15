@@ -4,8 +4,7 @@ const log = false;
 // Rapyd API configuration
 const RAPYD_BASE_URL = "https://sandboxapi.rapyd.net";
 // const RAPYD_BASE_URL = "https://api.rapyd.net";
-const RAPYD_ACCESS_KEY = process.env.RAPYD_ACCESS_KEY!;
-const RAPYD_SECRET_KEY = process.env.RAPYD_SECRET_KEY!;
+import { RAPYD_ACCESS_KEY, RAPYD_SECRET_KEY } from './config';
 
 // Generate Rapyd API signature (following official tutorial)
 function generateSignature(

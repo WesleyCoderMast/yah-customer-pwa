@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import DriverBids from "@/components/driver-bids";
 import type { Ride } from "@shared/schema";
+import { VITE_API_BASE_URL, VITE_ADYEN_CLIENT_KEY, VITE_ADYEN_ENVIRONMENT } from "@/lib/config";
 
 export default function RideTracking() {
   const [match, params] = useRoute("/ride/:rideId");
@@ -23,6 +24,9 @@ export default function RideTracking() {
   const [cancellationReason, setCancellationReason] = useState("");
   const [rating, setRating] = useState<1 | 2 | null>(null);
   const [ratingEmoji, setRatingEmoji] = useState("");
+  const [showPayment, setShowPayment] = useState(false);
+  const [dropInMounted, setDropInMounted] = useState(false);
+  const [adyenSession, setAdyenSession] = useState<any>(null);
 
   const { data: rideData, isLoading } = useQuery({
     queryKey: ['/api/rides', params?.rideId || ''],
@@ -82,6 +86,96 @@ export default function RideTracking() {
       setShowRating(true);
     }
   }, [ride]);
+
+  async function ensureAdyenScript(): Promise<void> {
+    if (document.getElementById('adyen-dropin-js')) return;
+    await new Promise<void>((resolve, reject) => {
+      const s = document.createElement('script');
+      s.id = 'adyen-dropin-js';
+      s.src = "https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.57.0/adyen.js".replace('live', VITE_ADYEN_ENVIRONMENT === 'live' ? 'live' : 'test');
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Failed to load Adyen Drop-in'));
+      document.head.appendChild(s);
+    });
+    if (!document.getElementById('adyen-dropin-css')) {
+      const l = document.createElement('link');
+      l.id = 'adyen-dropin-css';
+      l.rel = 'stylesheet';
+      l.href = "https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.57.0/adyen.css".replace('live', VITE_ADYEN_ENVIRONMENT === 'live' ? 'live' : 'test');
+      document.head.appendChild(l);
+    }
+  }
+
+  async function onPay() {
+    try {
+      if (!ride) return;
+      const rawFare = (ride.total_fare ?? '0') as any;
+      const numFare = typeof rawFare === 'number' ? rawFare : parseFloat(String(rawFare));
+      let amountMinor: number;
+      if (!Number.isFinite(numFare)) {
+        amountMinor = 0;
+      } else if (String(rawFare).includes('.')) {
+        // Value appears to be in major units (e.g., 12.34 dollars)
+        amountMinor = Math.round(numFare * 100);
+      } else if (numFare < 1 && numFare > 0) {
+        // Fractional (edge case)
+        amountMinor = Math.round(numFare * 100);
+      } else {
+        // Assume already minor units
+        amountMinor = Math.round(numFare);
+      }
+      const resp = await fetch(`${VITE_API_BASE_URL}/api/payments/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: { currency: 'USD', value: amountMinor },
+          reference: `ride-${ride.id}`,
+          returnUrl: window.location.origin + `/rides`,
+          shopperReference: (user as any)?.id
+        })
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Failed to create session');
+      setAdyenSession(data.session);
+      setShowPayment(true);
+    } catch (e: any) {
+      toast({ title: 'Unable to start payment', description: e?.message || 'Unknown', variant: 'destructive' });
+    }
+  }
+
+  useEffect(() => {
+    async function mountDropin() {
+      if (!showPayment || !adyenSession) return;
+      await ensureAdyenScript();
+      // @ts-ignore
+      const checkout = await new (window as any).AdyenCheckout({
+        clientKey: VITE_ADYEN_CLIENT_KEY,
+        environment: VITE_ADYEN_ENVIRONMENT,
+        session: adyenSession,
+        analytics: { enabled: false },
+        onPaymentCompleted: () => {
+          setShowPayment(false);
+          setAdyenSession(null);
+          setDropInMounted(false);
+          queryClient.invalidateQueries({ queryKey: ['/api/rides'] });
+          toast({ title: 'Payment successful' });
+        },
+        onError: (err: any) => {
+          console.error(err);
+          toast({ title: 'Payment error', description: err?.message || 'Unknown', variant: 'destructive' });
+        }
+      });
+      const el = document.getElementById('dropin-container');
+      if (el) {
+        // Clear previous content before re-mounting
+        el.innerHTML = '';
+        // @ts-ignore
+        checkout.create('dropin').mount(el);
+        setDropInMounted(true);
+      }
+    }
+    mountDropin();
+  }, [showPayment, adyenSession]);
 
   if (isLoading) {
     return (
@@ -288,6 +382,26 @@ export default function RideTracking() {
 
         {/* Action Buttons */}
         <div className="space-y-3">
+          {(parseFloat(ride.total_fare || '0') > 0) && (
+            <Dialog open={showPayment} onOpenChange={(open) => { setShowPayment(open); if (!open) { setDropInMounted(false); setAdyenSession(null); } }}>
+              <div className="space-y-3">
+                <Button 
+                  onClick={onPay}
+                  className="w-full bg-gradient-gold text-yah-darker font-semibold"
+                  data-testid="button-pay"
+                >
+                  <i className="fas fa-credit-card mr-2"></i>
+                  Pay ${parseFloat(ride.total_fare || '0').toFixed(2)}
+                </Button>
+              </div>
+              <DialogContent className="bg-yah-darker border-yah-gold/20">
+                <DialogHeader>
+                  <DialogTitle className="text-yah-gold">Complete Payment</DialogTitle>
+                </DialogHeader>
+                <div id="dropin-container" className="min-h-[280px]" />
+              </DialogContent>
+            </Dialog>
+          )}
           {canCancelRide && (
             <Dialog open={showCancel} onOpenChange={setShowCancel}>
               <DialogTrigger asChild>

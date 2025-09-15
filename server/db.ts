@@ -2,16 +2,20 @@ import { createClient } from "@supabase/supabase-js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@shared/schema";
+import dotenv from "dotenv"; // Import dotenv
+import { DATABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_SUPABASE_URL } from "./config";
+
+dotenv.config();
 
 // Check if we have Supabase credentials
 let supabase: any = null;
 let db: any = null;
 
-if (process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY) {
+if (VITE_SUPABASE_URL && VITE_SUPABASE_ANON_KEY) {
   // Use Supabase client for REST API connection
   supabase = createClient(
-    process.env.VITE_SUPABASE_URL,
-    process.env.VITE_SUPABASE_ANON_KEY
+    VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY
   );
   
   console.log("Using Supabase client for database operations");
@@ -23,12 +27,17 @@ if (process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY) {
     connect_timeout: 1,
   });
   db = drizzle(mockConnection, { schema });
-} else if (process.env.DATABASE_URL) {
+} else if (DATABASE_URL) {
   // Fallback to direct PostgreSQL connection
-  const sql = postgres(process.env.DATABASE_URL);
+  const sql = postgres(DATABASE_URL);
   db = drizzle(sql, { schema });
 } else {
   throw new Error("Either VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY or DATABASE_URL must be provided");
 }
 
 export { supabase, db };
+
+
+
+
+

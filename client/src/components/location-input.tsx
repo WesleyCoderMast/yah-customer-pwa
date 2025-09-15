@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { VITE_API_BASE_URL } from "@/lib/config";
 
 interface LocationSuggestion {
   id: string;
@@ -26,7 +27,7 @@ const locationSearchService = {
     if (query.length < 2) return [];
     
     try {
-      const response = await fetch(`/api/locations/search?query=${encodeURIComponent(query)}`);
+      const response = await fetch(`${VITE_API_BASE_URL}/api/locations/search?query=${encodeURIComponent(query)}`);
       
       if (!response.ok) {
         throw new Error(`Location search API error: ${response.status}`);

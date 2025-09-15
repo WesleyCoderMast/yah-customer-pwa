@@ -1,0 +1,61 @@
+// Frontend configuration file with hardcoded values
+// This replaces all import.meta.env.xxx usage in the frontend
+
+export const config = {
+  // Supabase Configuration - Using real values from .env
+  supabase: {
+    url: "https://vkytupgdapdfpfolsmnd.supabase.co",
+    anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreXR1cGdkYXBkZnBmb2xzbW5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwOTg5MjIsImV4cCI6MjA2NzY3NDkyMn0.lWBBmpKAzjg7OcJh5CC8ox8EV0Hd1zALIineF7ZZCuA"
+  },
+
+  // API Configuration
+  api: {
+    baseUrl: "http://localhost:5000",
+    timeout: 10000
+  },
+
+  // Payments (Adyen)
+  payments: {
+    adyen: {
+      // From server/config.ts example clientKey
+      clientKey: "test_3ZD3YVSQNNFARHSIVOXGQH5PAIYQKLGK",
+      environment: "test"
+    }
+  },
+  
+  // App Configuration
+  app: {
+    name: "Yah Customer PWA",
+    version: "1.0.0",
+    environment: "development"
+  },
+  
+  // Map Configuration
+  map: {
+    defaultCenter: {
+      lat: 40.7128,
+      lng: -74.0060
+    },
+    defaultZoom: 13
+  },
+  
+  // Feature Flags
+  features: {
+    enableNotifications: true,
+    enableOfflineMode: true,
+    enableRealTimeTracking: true
+  }
+};
+
+// Export individual values for easy access (replacing import.meta.env.xxx)
+export const VITE_SUPABASE_URL = config.supabase.url;
+export const VITE_SUPABASE_ANON_KEY = config.supabase.anonKey;
+export const VITE_API_BASE_URL = config.api.baseUrl;
+export const VITE_APP_NAME = config.app.name;
+export const VITE_APP_VERSION = config.app.version;
+export const VITE_APP_ENVIRONMENT = config.app.environment;
+export const VITE_ADYEN_CLIENT_KEY = config.payments.adyen.clientKey;
+export const VITE_ADYEN_ENVIRONMENT = config.payments.adyen.environment;
+
+// Default export for easy importing
+export default config;

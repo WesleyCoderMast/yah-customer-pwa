@@ -10,11 +10,11 @@ import BottomNavigation from "@/components/bottom-navigation";
 import { createClient } from "@supabase/supabase-js";
 import type { ChatMessage, YahChatSession } from "@shared/schema";
 
+import { VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY } from '../lib/config';
+
 const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL ||
-    "https://vkytupgdapdfpfolsmnd.supabase.co",
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreXR1cGdkYXBkZnBmb2xzbW5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwOTg5MjIsImV4cCI6MjA2NzY3NDkyMn0.lWBBmpKAzjg7OcJh5CC8ox8EV0Hd1zALIineF7ZZCuA",
+  VITE_SUPABASE_URL,
+  VITE_SUPABASE_ANON_KEY,
 );
 
 const EVENT_MESSAGE_TYPE = "chat_message";

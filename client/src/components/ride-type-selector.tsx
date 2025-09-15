@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { RideType } from "@shared/schema";
+import { VITE_API_BASE_URL } from "@/lib/config";
 
 interface RideTypeSelectorProps {
   selectedRideType: string;
@@ -53,7 +54,7 @@ export default function RideTypeSelector({ selectedRideType, onRideTypeChange, t
   // Fetch ride types from database
   const { data: rideTypesResponse, isLoading, error } = useQuery({
     queryKey: ['/api/ride-types'],
-    queryFn: () => fetch('/api/ride-types').then(res => res.json()),
+    queryFn: () => fetch(`${VITE_API_BASE_URL}/api/ride-types`).then(res => res.json()),
   });
 
   const rideTypes = rideTypesResponse?.rideTypes || [];

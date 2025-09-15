@@ -15,12 +15,15 @@ import {
   insertYahChatSessionSchema,
 } from "@shared/schema";
 import { createClient } from "@supabase/supabase-js";
+import { VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "./config";
+import paymentRoutes from "./paymentRoutes";
+import { scheduledPayoutService } from "./scheduledPayoutService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize Supabase admin client for server-side operations
   const supabaseAdmin = createClient(
-    process.env.VITE_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    VITE_SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
   );
 
   // Authentication routes for custom email confirmation
@@ -92,6 +95,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to confirm email" });
     }
   });
+
+  // Payment routes
+  app.use("/api/payments", paymentRoutes);
+
+  // Start scheduled payout service
+  scheduledPayoutService.start();
 
   // Customer routes
   app.post("/api/customers", async (req, res) => {
@@ -348,6 +357,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const rideData = insertRideSchema.parse(req.body);
 
+      // Ensure total_fare is stored when booking
+      if (rideData.total_fare == null) {
+        // Try to read alternative client-provided fields
+        const rawTotal = (req.body?.totalFare ?? req.body?.fare ?? req.body?.total_fare);
+        let computed = Number.isFinite(rawTotal) ? Number(rawTotal) : parseFloat(rawTotal);
+        if (!Number.isFinite(computed)) {
+          // Fallback simple estimate if distance/duration available
+          const miles = typeof rideData.distance_miles === 'number' ? rideData.distance_miles : undefined;
+          const minutes = typeof rideData.duration_minutes === 'number' ? rideData.duration_minutes : undefined;
+          if (typeof miles === 'number' || typeof minutes === 'number') {
+            const perMile = 2; // fallback rate
+            const perMinute = 0.5; // fallback rate
+            computed = (miles || 0) * perMile + (minutes || 0) * perMinute;
+          }
+        }
+        if (Number.isFinite(computed)) {
+          rideData.total_fare = Math.max(0, Math.round((computed as number) * 100) / 100);
+        }
+      }
+
       // Create single ride booking
       const ride = await storage.createRide(rideData);
 
@@ -397,7 +426,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/rides/:id", async (req, res) => {
     try {
       const { id } = req.params;
-
       // Validate UUID format to prevent parsing errors
       const uuidRegex =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -406,7 +434,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const ride = await storage.getRide(id);
-
       if (!ride) {
         return res.status(404).json({ message: "Ride not found" });
       }
@@ -795,6 +822,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Ride types fetch error:", error);
       res.status(500).json({ message: "Failed to fetch ride types" });
+    }
+  });
+
+  // Infer ride categories from ride types until a dedicated table is connected
+  app.get("/api/ride-categories", async (_req, res) => {
+    try {
+      const rideTypes = await storage.getRideTypes();
+      const categories: Record<string, { id: string; name: string; tripArea: 'in-city' | 'out-of-city' }> = {};
+      const inferTripArea = (title: string): 'in-city' | 'out-of-city' => title.toLowerCase().includes('travel') ? 'out-of-city' : 'in-city';
+      const inferCategoryId = (title: string) => {
+        const t = title.toLowerCase();
+        if (t.includes('travel')) {
+          if (t.includes('individual')) return 'travel-individual';
+          if (t.includes('group') || t.includes('family')) return 'travel-group';
+          if (t.includes('business') || t.includes('medical')) return 'travel-purpose';
+          if (t.includes('engagement') || t.includes('union') || t.includes('marriage') || t.includes('honeymoon')) return 'travel-relationship';
+          if (t.includes('army') || t.includes('military') || t.includes('security')) return 'travel-protected';
+          if (t.includes('royal') || t.includes('celebrity') || t.includes('elite')) return 'travel-luxury';
+          if (t.includes('quiet') || t.includes('silent')) return 'travel-quiet';
+          return 'travel-basic';
+        }
+        if (t.includes('youth') || t.includes('man') || t.includes('woman') || t.includes('senior') || t.includes('single') || t.includes('solo')) return 'individual';
+        if (t.includes('couple') || t.includes('engagement') || t.includes('union') || t.includes('dating') || t.includes('marriage') || t.includes('wedding') || t.includes('match') || t.includes('pure')) return 'relationship';
+        if (t.includes('birthday') || t.includes('valentine') || t.includes('party') || t.includes('invitation')) return 'event';
+        if (t.includes('army') || t.includes('military') || t.includes('security')) return 'protected';
+        if (t.includes('royal') || t.includes('celebrity') || t.includes('elite')) return 'luxury';
+        if (t.includes('business') || t.includes('medical')) return 'service';
+        return 'regular';
+      };
+
+      for (const rt of rideTypes as any[]) {
+        const title = String(rt.title || rt.name || '');
+        const id = inferCategoryId(title);
+        const tripArea = inferTripArea(title);
+        if (!categories[id]) {
+          categories[id] = { id, name: id.replace(/-/g, ' '), tripArea };
+        }
+      }
+      res.json({ categories: Object.values(categories) });
+    } catch (error: any) {
+      console.error("Ride categories fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch ride categories" });
+    }
+  });
+
+  // Filter ride types by category and tripArea
+  app.get("/api/ride-types/by-category", async (req, res) => {
+    try {
+      const { category, tripArea } = req.query as { category?: string; tripArea?: 'in-city' | 'out-of-city' };
+      const rideTypes = await storage.getRideTypes();
+      const areaOf = (title: string) => title.toLowerCase().includes('travel') ? 'out-of-city' : 'in-city';
+      const catOf = (title: string) => {
+        const t = title.toLowerCase();
+        if (t.includes('travel')) {
+          if (t.includes('individual')) return 'travel-individual';
+          if (t.includes('group') || t.includes('family')) return 'travel-group';
+          if (t.includes('business') || t.includes('medical')) return 'travel-purpose';
+          if (t.includes('engagement') || t.includes('union') || t.includes('marriage') || t.includes('honeymoon')) return 'travel-relationship';
+          if (t.includes('army') || t.includes('military') || t.includes('security')) return 'travel-protected';
+          if (t.includes('royal') || t.includes('celebrity') || t.includes('elite')) return 'travel-luxury';
+          if (t.includes('quiet') || t.includes('silent')) return 'travel-quiet';
+          return 'travel-basic';
+        }
+        if (t.includes('youth') || t.includes('man') || t.includes('woman') || t.includes('senior') || t.includes('single') || t.includes('solo')) return 'individual';
+        if (t.includes('couple') || t.includes('engagement') || t.includes('union') || t.includes('dating') || t.includes('marriage') || t.includes('wedding') || t.includes('match') || t.includes('pure')) return 'relationship';
+        if (t.includes('birthday') || t.includes('valentine') || t.includes('party') || t.includes('invitation')) return 'event';
+        if (t.includes('army') || t.includes('military') || t.includes('security')) return 'protected';
+        if (t.includes('royal') || t.includes('celebrity') || t.includes('elite')) return 'luxury';
+        if (t.includes('business') || t.includes('medical')) return 'service';
+        return 'regular';
+      };
+
+      const filtered = (rideTypes as any[]).filter(rt => {
+        const title = String(rt.title || rt.name || '');
+        const a = areaOf(title);
+        const c = catOf(title);
+        if (tripArea && a !== tripArea) return false;
+        if (category && c !== category) return false;
+        return true;
+      });
+
+      res.json({ rideTypes: filtered });
+    } catch (error: any) {
+      console.error("Ride types by category fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch ride types by category" });
     }
   });
 

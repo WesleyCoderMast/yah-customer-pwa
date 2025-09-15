@@ -1,17 +1,75 @@
-const { Client, CheckoutAPI, EnvironmentEnum } = require('@adyen/api-library');
+
+import Adyen from '@adyen/api-library';
+import { EnvironmentEnum } from '@adyen/api-library/lib/src/config';
+import { ADYEN_API_KEY, ADYEN_MERCHANT_ACCOUNT, ADYEN_ENVIRONMENT } from './config';
 
 // Adyen API configuration
-const ADYEN_API_KEY = process.env.ADYEN_API_KEY!;
-const ADYEN_MERCHANT_ACCOUNT = process.env.ADYEN_MERCHANT_ACCOUNT!;
-const ADYEN_ENVIRONMENT = process.env.ADYEN_ENVIRONMENT || 'TEST'; // TEST or LIVE
 
 // Initialize Adyen client
-const client = new Client({
+const client = new Adyen.Client({
   apiKey: ADYEN_API_KEY,
   environment: ADYEN_ENVIRONMENT === 'LIVE' ? EnvironmentEnum.LIVE : EnvironmentEnum.TEST
 });
 
-const checkout = new CheckoutAPI(client);
+const checkout = new Adyen.CheckoutAPI(client);
+
+/**
+ * Helper function to create a properly formatted Adyen payment request
+ * Based on the official Adyen API documentation
+ * 
+ * Example usage:
+ * const paymentRequest = createAdyenPaymentRequest({
+ *   amount: { currency: "USD", value: 1000 },
+ *   reference: "Your order number",
+ *   paymentMethod: {
+ *     type: "scheme",
+ *     encryptedCardNumber: "test_4111111111111111",
+ *     encryptedExpiryMonth: "test_03",
+ *     encryptedExpiryYear: "test_2030",
+ *     encryptedSecurityCode: "test_737"
+ *   },
+ *   shopperReference: "YOUR_UNIQUE_SHOPPER_ID_IOfW3k9G2PvXFu2j",
+ *   storePaymentMethod: true,
+ *   shopperInteraction: "Ecommerce",
+ *   recurringProcessingModel: "CardOnFile",
+ *   returnUrl: "https://your-company.com/...",
+ *   merchantAccount: "YOUR_MERCHANT_ACCOUNT"
+ * });
+ */
+export function createAdyenPaymentRequest(data: {
+  amount: { currency: string; value: number };
+  reference: string;
+  paymentMethod: {
+    type: string;
+    encryptedCardNumber?: string;
+    encryptedExpiryMonth?: string;
+    encryptedExpiryYear?: string;
+    encryptedSecurityCode?: string;
+    number?: string;
+    expiryMonth?: string;
+    expiryYear?: string;
+    cvc?: string;
+    holderName?: string;
+  };
+  shopperReference?: string;
+  storePaymentMethod?: boolean;
+  shopperInteraction?: 'Ecommerce' | 'ContAuth' | 'Moto' | 'POS';
+  recurringProcessingModel?: 'CardOnFile' | 'Subscription' | 'UnscheduledCardOnFile';
+  returnUrl?: string;
+  merchantAccount: string;
+}): any {
+  return {
+    amount: data.amount,
+    reference: data.reference,
+    paymentMethod: data.paymentMethod,
+    shopperReference: data.shopperReference,
+    storePaymentMethod: data.storePaymentMethod || false,
+    shopperInteraction: data.shopperInteraction || 'Ecommerce',
+    recurringProcessingModel: data.recurringProcessingModel || 'CardOnFile',
+    returnUrl: data.returnUrl || 'https://your-company.com/checkout/return',
+    merchantAccount: data.merchantAccount
+  };
+}
 
 export interface AdyenPaymentRequest {
   amount: {
@@ -19,7 +77,13 @@ export interface AdyenPaymentRequest {
     currency: string;
   };
   paymentMethod: {
-    type: string;
+    type: 'scheme' | 'ideal' | 'paypal' | 'applepay' | 'googlepay' | string;
+    // For encrypted card data (recommended)
+    encryptedCardNumber?: string;
+    encryptedExpiryMonth?: string;
+    encryptedExpiryYear?: string;
+    encryptedSecurityCode?: string;
+    // For plain card data (less secure, for testing)
     number?: string;
     expiryMonth?: string;
     expiryYear?: string;
@@ -33,6 +97,9 @@ export interface AdyenPaymentRequest {
   shopperEmail?: string;
   countryCode?: string;
   shopperLocale?: string;
+  storePaymentMethod?: boolean;
+  shopperInteraction?: 'Ecommerce' | 'ContAuth' | 'Moto' | 'POS';
+  recurringProcessingModel?: 'CardOnFile' | 'Subscription' | 'UnscheduledCardOnFile';
   capture?: boolean; // For authorization and capture flow
 }
 
@@ -57,20 +124,20 @@ export class AdyenClient {
         capture: paymentData.capture
       });
 
-      const request = {
+      const request = createAdyenPaymentRequest({
         amount: paymentData.amount,
         paymentMethod: paymentData.paymentMethod,
         reference: paymentData.reference,
         merchantAccount: paymentData.merchantAccount,
-        returnUrl: paymentData.returnUrl || 'https://your-company-website.com/checkout/return',
+        returnUrl: paymentData.returnUrl,
         shopperReference: paymentData.shopperReference,
-        shopperEmail: paymentData.shopperEmail,
-        countryCode: paymentData.countryCode || 'US',
-        shopperLocale: paymentData.shopperLocale || 'en_US',
-        captureDelayHours: paymentData.capture === false ? 0 : undefined, // 0 = manual capture
-      };
-
-      const response = await checkout.payments(request);
+        storePaymentMethod: paymentData.storePaymentMethod,
+        shopperInteraction: paymentData.shopperInteraction,
+        recurringProcessingModel: paymentData.recurringProcessingModel
+      });
+      console.log(request)
+      const idempotency = new Date().getTime().toString();
+      const response = await checkout.PaymentsApi.payments(request as any, { idempotencyKey: idempotency });
 
       console.log('Adyen payment response:', {
         resultCode: response.resultCode,
@@ -119,19 +186,19 @@ export class AdyenClient {
 
       const request = {
         merchantAccount: ADYEN_MERCHANT_ACCOUNT,
-        modificationAmount: modificationAmount,
+        amount: modificationAmount,
         originalReference: pspReference,
         reference: `capture-${pspReference}-${Date.now()}`
       };
 
-      const response = await checkout.paymentsCapture(request);
+      const response = await checkout.ModificationsApi.captureAuthorisedPayment(pspReference, request);
 
       console.log('Adyen capture response:', {
-        response: response.response,
-        pspReference: response.pspReference
+        pspReference: response.pspReference,
+        status: response.status
       });
 
-      if (response.response === '[capture-received]') {
+      if (response.status === 'received') {
         return {
           success: true,
           pspReference: response.pspReference,
@@ -170,19 +237,19 @@ export class AdyenClient {
 
       const request = {
         merchantAccount: ADYEN_MERCHANT_ACCOUNT,
-        modificationAmount: modificationAmount,
+        amount: modificationAmount,
         originalReference: pspReference,
         reference: `refund-${pspReference}-${Date.now()}`
       };
 
-      const response = await checkout.paymentsRefund(request);
+      const response = await checkout.ModificationsApi.refundCapturedPayment(pspReference, request);
 
       console.log('Adyen refund response:', {
-        response: response.response,
-        pspReference: response.pspReference
+        pspReference: response.pspReference,
+        status: response.status
       });
 
-      if (response.response === '[refund-received]') {
+      if (response.status === 'received') {
         return {
           success: true,
           pspReference: response.pspReference,

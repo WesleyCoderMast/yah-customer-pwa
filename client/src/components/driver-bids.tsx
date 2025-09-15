@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { apiRequest } from "@/lib/queryClient";
 import PaymentForm from "./payment-form";
+import { VITE_API_BASE_URL } from "@/lib/config";
 
 interface DriverBidsProps {
   rideId: string;
@@ -43,7 +44,7 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
   // Fetch driver bids for this ride
   const { data: bidsData, isLoading } = useQuery({
     queryKey: ['/api/rides', rideId, 'requests'],
-    queryFn: () => fetch(`/api/rides/${rideId}/requests`).then(res => res.json()),
+    queryFn: () => fetch(`${VITE_API_BASE_URL}/api/rides/${rideId}/requests`).then(res => res.json()),
     enabled: !!rideId && (rideStatus === 'pending' || rideStatus === 'searching_driver'),
     refetchInterval: 5000, // Poll for new bids every 5 seconds
   });
@@ -167,15 +168,18 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
                     <Avatar className="w-12 h-12 border-2 border-primary/20">
                       <AvatarImage src={bid.drivers?.profile_image_url} />
                       <AvatarFallback className="bg-primary text-primary-foreground font-bold text-sm">
-                        {bid.drivers?.name?.substring(0, 2).toUpperCase() || 'DR'}
+                        {`${(bid.drivers?.first_name || '').charAt(0)}${(bid.drivers?.last_name || '').charAt(0)}`.toUpperCase() || 'DR'}
                       </AvatarFallback>
                     </Avatar>
                     <h3 className="font-bold text-primary text-lg">
-                      {bid.drivers?.name || 'Driver Available'}
+                      {`${bid.drivers?.first_name ?? ''} ${bid.drivers?.last_name ?? ''}`.trim() || 'Driver Available'}
                     </h3>
                   </div>
                   <Badge className="bg-green-500/20 text-green-400 text-xl font-bold px-3 py-1">
-                    $23.87
+                    {(() => {
+                      const num = parseFloat(String(bid.bidAmount ?? ''));
+                      return isNaN(num) ? '$—' : `$${num.toFixed(2)}`;
+                    })()}
                   </Badge>
                 </div>
                 
@@ -184,16 +188,23 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
                   <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                     <span className="flex items-center">
                       <i className="fas fa-star text-yellow-400 mr-1"></i>
-                      {bid.drivers?.rating ? parseFloat(bid.drivers.rating).toFixed(1) : '4.8'} rating
+                      {bid.drivers?.rating ? Number(bid.drivers.rating).toFixed(1) : '4.8'} rating
                     </span>
-                    <span className="flex items-center">
-                      <i className="fas fa-clock text-blue-400 mr-1"></i>
-                      16 min arrival
-                    </span>
+                    {bid.estimatedArrival ? (
+                      <span className="flex items-center">
+                        <i className="fas fa-clock text-blue-400 mr-1"></i>
+                        {bid.estimatedArrival} min arrival
+                      </span>
+                    ) : null}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     <i className="fas fa-car text-gray-400 mr-2"></i>
-                    {bid.drivers?.vehicle_type || 'Vehicle Information Available'}
+                    {(() => {
+                      const d = bid.drivers;
+                      if (!d) return 'Vehicle Information Unavailable';
+                      const parts = [d.vehicle_make, d.vehicle_model, d.vehicle_color, d.license_plate].filter(Boolean);
+                      return parts.length ? parts.join(' • ') : 'Vehicle Information Unavailable';
+                    })()}
                   </div>
                   <div className="text-xs text-muted-foreground/70">
                     <i className="fas fa-check-circle text-green-400 mr-2"></i>
@@ -213,11 +224,11 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
                 Select & Pay
               </Button>
               
-              {bid.notes && (
+              {bid.driverMessage && (
                 <div className="mt-3 p-3 bg-primary/10 rounded-md">
                   <p className="text-sm text-muted-foreground">
                     <i className="fas fa-comment mr-2"></i>
-                    "{bid.notes}"
+                    "{bid.driverMessage}"
                   </p>
                 </div>
               )}

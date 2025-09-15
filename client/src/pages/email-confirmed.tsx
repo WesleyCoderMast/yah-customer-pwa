@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { VITE_API_BASE_URL } from '@/lib/config';
 
 export default function EmailConfirmed() {
   const [, setLocation] = useLocation();
@@ -32,7 +33,7 @@ export default function EmailConfirmed() {
         }
 
         // Call backend to confirm email
-        const confirmResponse = await fetch('/api/auth/confirm-email', {
+        const confirmResponse = await fetch(`${VITE_API_BASE_URL}/api/auth/confirm-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token, email: decodeURIComponent(email) }),

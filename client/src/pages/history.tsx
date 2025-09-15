@@ -5,13 +5,13 @@ import { Link } from "wouter";
 
 interface Ride {
   id: string;
-  pickup_location: string;
-  dropoff_location: string;
+  pickup: string;
+  dropoff: string;
   ride_type: string;
-  status: 'completed' | 'cancelled' | 'in_progress';
-  fare_amount: number;
+  status: 'completed' | 'cancelled' | 'in_progress' | string;
+  total_fare?: number | string | null;
   created_at: string;
-  completed_at?: string;
+  completed_at?: string | null;
 }
 
 export default function History() {
@@ -65,7 +65,13 @@ export default function History() {
               <span className="text-sm font-medium text-primary">Total Spent</span>
             </div>
             <div className="text-2xl font-bold text-accent">
-              ${rides?.reduce((sum, ride) => sum + (ride.fare_amount || 0), 0).toFixed(2) || '0.00'}
+              ${(
+                rides?.reduce((sum, ride) => {
+                  const raw = ride.total_fare;
+                  const num = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '0'));
+                  return sum + (Number.isFinite(num) ? num : 0);
+                }, 0) || 0
+              ).toFixed(2)}
             </div>
             <div className="text-xs text-muted-foreground">All time</div>
           </div>
@@ -129,7 +135,11 @@ export default function History() {
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold text-accent">
-                      ${ride.fare_amount?.toFixed(2) || '0.00'}
+                      {(() => {
+                        const raw = ride.total_fare;
+                        const num = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '0'));
+                        return `$${Number.isFinite(num) ? num.toFixed(2) : '0.00'}`;
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -142,8 +152,8 @@ export default function History() {
                       <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-primary">{ride.pickup_location}</p>
-                      <p className="text-sm text-muted-foreground">{ride.dropoff_location}</p>
+                      <p className="text-sm font-medium text-primary">{ride.pickup}</p>
+                      <p className="text-sm text-muted-foreground">{ride.dropoff}</p>
                     </div>
                   </div>
                 </div>

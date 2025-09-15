@@ -13,6 +13,7 @@ import RideTypeSelector from "@/components/ride-type-selector";
 import RouteMap from "@/components/route-map";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { VITE_SUPABASE_ANON_KEY } from "@/lib/config";
 
 type BookingStep = 'trip-area' | 'category' | 'ride-type' | 'passengers' | 'open-door' | 'locations' | 'confirmation';
 
@@ -119,7 +120,7 @@ function LocationSelectionView({ bookingData, setBookingData, calculateVehicleCo
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${VITE_SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify(requestBody)
       });
@@ -461,7 +462,7 @@ export default function Booking() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${VITE_SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify(requestBody)
       });

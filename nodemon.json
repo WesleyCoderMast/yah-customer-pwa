@@ -1,0 +1,5 @@
+{
+  "watch": ["server/**/*.ts"],
+  "ext": "ts,json",
+  "exec": "npx tsx server/server-only.ts"
+}

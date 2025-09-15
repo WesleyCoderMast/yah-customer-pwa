@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { PORT } from "./config";
 
 const app = express();
 
@@ -62,7 +63,7 @@ app.use((req, res, next) => {
   });
 
   // Backend server only - no frontend serving
-  const port = parseInt(process.env.PORT || '8000', 10);
+  const port = parseInt(PORT || '8000', 10);
   server.listen({
     port,
     host: "0.0.0.0",

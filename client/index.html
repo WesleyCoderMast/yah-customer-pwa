@@ -5,16 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Yah™ Customer</title>
     
-    <!-- PWA Meta Tags -->
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#1f2937">
     <meta name="description" content="Premium ride booking app with luxury service and real-time tracking">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Yah™ Customer">
-    <link rel="apple-touch-icon" href="/icon-192.png">
-    <link rel="icon" type="image/png" href="/icon-192.png">
-    <link rel="shortcut icon" href="/icon-192.png">
+    <link rel="icon" type="image/png" href="/icon-192x192.png">
+    <link rel="shortcut icon" href="/icon-192x192.png">
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -85,6 +78,27 @@
         }
       }, 500);
     })();
+    </script>
+    
+    <!-- Unregister any existing service workers to complete PWA removal -->
+    <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => {
+          registration.unregister();
+          console.log('Unregistered service worker:', registration.scope);
+        });
+      });
+      // Also clear any cached data
+      if (window.caches) {
+        caches.keys().then(keys => {
+          keys.forEach(key => {
+            caches.delete(key);
+            console.log('Deleted cache:', key);
+          });
+        });
+      }
+    }
     </script>
     
     <!-- This is a replit script which adds a banner on the top of the page when opened in development mode outside the replit environment -->

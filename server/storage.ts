@@ -388,7 +388,6 @@ export class DatabaseStorage implements IStorage {
       .select('*')
       .eq('id', id)
       .single();
-    
     if (error && error.code !== 'PGRST116') {
       console.error('Error fetching ride:', error);
       return undefined;

@@ -1,11 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
+import { VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_BASE_URL } from './config';
 
-// Supabase configuration using environment variables
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Supabase configuration using hardcoded values from config
+const supabaseUrl = VITE_SUPABASE_URL;
+const supabaseAnonKey = VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
+  throw new Error('Missing Supabase configuration values');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -21,7 +22,7 @@ export class RideTracker {
     // Poll for ride updates every 3 seconds
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/rides/${rideId}`);
+        const response = await fetch(`${VITE_API_BASE_URL}/api/rides/${rideId}`);
         if (response.ok) {
           const data = await response.json();
           callback(data.ride);

@@ -2,6 +2,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import BottomNavigation from "@/components/bottom-navigation";
+import { VITE_API_BASE_URL } from "@/lib/config";
 
 export default function Home() {
   const { user } = useAuth();
@@ -11,7 +12,7 @@ export default function Home() {
     queryKey: ['/api/customer/profile', user?.id],
     queryFn: async () => {
       if (!user?.id) throw new Error('No user ID');
-      const response = await fetch(`/api/customer/profile?customerId=${user.id}`);
+      const response = await fetch(`${VITE_API_BASE_URL}/api/customer/profile?customerId=${user.id}`);
       if (!response.ok) throw new Error('Failed to fetch customer data');
       const result = await response.json();
       return result.customer;

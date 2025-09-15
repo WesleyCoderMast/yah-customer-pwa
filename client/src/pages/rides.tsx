@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import BottomNavigation from "@/components/bottom-navigation";
 import RideCard from "@/components/ride-card";
 import type { Ride } from "@shared/schema";
+import { VITE_API_BASE_URL } from "@/lib/config";
 
 export default function Rides() {
   const { user } = useAuth();
@@ -15,7 +16,7 @@ export default function Rides() {
 
   const { data: ridesData, isLoading } = useQuery({
     queryKey: ['/api/rides', user?.id],
-    queryFn: () => fetch(`/api/rides?customerId=${user?.id}`).then(res => res.json()),
+    queryFn: () => fetch(`${VITE_API_BASE_URL}/api/rides?customerId=${user?.id}`).then(res => res.json()),
     enabled: !!user?.id,
   });
 
@@ -26,8 +27,6 @@ export default function Rides() {
   const completedRides = rides.filter((ride: Ride) => 
     ['completed', 'cancelled'].includes(ride.status)
   );
-
-
 
   return (
     <div className="min-h-screen bg-background pb-20">

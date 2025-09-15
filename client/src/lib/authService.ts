@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { User } from '../hooks/useAuth';
+import { VITE_API_BASE_URL } from './config';
 
 export interface AuthResponse {
   user: User | null;
@@ -62,7 +63,7 @@ export const authService = {
             isActive: true,
           };
 
-          const response = await fetch('/api/customers', {
+          const response = await fetch(`${VITE_API_BASE_URL}/api/customers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(customerData),
@@ -80,7 +81,7 @@ export const authService = {
 
         // Send custom backend email confirmation
         try {
-          await fetch('/api/auth/send-confirmation-email', {
+          await fetch(`${VITE_API_BASE_URL}/api/auth/send-confirmation-email`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -120,7 +121,7 @@ export const authService = {
       if (data.user) {
         // Fetch customer data from database
         try {
-          const customerResponse = await fetch(`/api/customer/profile?customerId=${data.user.id}`);
+          const customerResponse = await fetch(`${VITE_API_BASE_URL}/api/customer/profile?customerId=${data.user.id}`);
           let customerData = null;
           
           if (customerResponse.ok) {

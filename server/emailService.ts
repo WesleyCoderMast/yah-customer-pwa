@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, FROM_NAME, FROM_EMAIL, BASE_URL } from './config';
 
 export interface EmailConfig {
   smtp: {
@@ -16,20 +17,20 @@ export interface EmailConfig {
   };
 }
 
-// Default configuration - can be overridden with environment variables
+// Default configuration with hardcoded values
 const defaultConfig: EmailConfig = {
   smtp: {
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
     auth: {
-      user: process.env.SMTP_USER || '',
-      pass: process.env.SMTP_PASS || '',
+      user: SMTP_USER,
+      pass: SMTP_PASS,
     },
   },
   from: {
-    name: process.env.FROM_NAME || 'Yah Support',
-    email: process.env.FROM_EMAIL || 'admin@yahapp.online',
+    name: FROM_NAME,
+    email: FROM_EMAIL,
   },
 };
 
@@ -43,7 +44,7 @@ class EmailService {
   }
 
   async sendConfirmationEmail(to: string, name: string, userId: string, confirmationUrl?: string): Promise<void> {
-    const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+    const baseUrl = BASE_URL;
     const confirmUrl = confirmationUrl || `${baseUrl}/email-confirmed?token=${userId}&email=${encodeURIComponent(to)}`;
 
     const htmlContent = `
@@ -198,7 +199,7 @@ class EmailService {
               </p>
               
               <div style="text-align: center;">
-                <a href="${process.env.BASE_URL || 'http://localhost:5000'}" class="button">Start Your First Ride</a>
+                <a href="${BASE_URL}" class="button">Start Your First Ride</a>
               </div>
             </div>
             
@@ -221,7 +222,7 @@ class EmailService {
       
       You now have access to all premium features including luxury rides, real-time tracking, and our AI-powered support system.
       
-      Start your first ride at: ${process.env.BASE_URL || 'http://localhost:5000'}
+      Start your first ride at: ${BASE_URL}
       
       Welcome to the Yah family!
       

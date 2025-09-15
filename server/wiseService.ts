@@ -1,3 +1,5 @@
+import { ADYEN_MERCHANT_ACCOUNT, ADYEN_SUCCESS_RETURN_URL } from './config';
+
 export interface CardPaymentRequest {
   amount: number;
   currency: string;
@@ -38,9 +40,8 @@ class WiseService {
       // Import Adyen client and helpers
       const { adyenClient, formatCardForAdyen, convertToMinorUnits } = await import('./adyen');
 
-      // Get merchant account from environment
-      const ADYEN_MERCHANT_ACCOUNT = process.env.ADYEN_MERCHANT_ACCOUNT!;
-      
+      // Get merchant account from hardcoded config
+
       if (!ADYEN_MERCHANT_ACCOUNT) {
         throw new Error('ADYEN_MERCHANT_ACCOUNT environment variable is required');
       }
@@ -57,18 +58,20 @@ class WiseService {
       const amountValue = convertToMinorUnits(paymentData.amount, paymentData.currency);
 
       console.log('Step 1: Creating Adyen payment authorization...');
-      
+      console.log(ADYEN_MERCHANT_ACCOUNT)
+      console.log(paymentMethod)
       // Step 1: Create payment authorization (capture: false)
       const adyenPayment = await adyenClient.createPayment({
         amount: {
-          value: amountValue,
+          value: paymentData.amount,
           currency: paymentData.currency
         },
         paymentMethod: paymentMethod,
         reference: paymentData.reference,
         merchantAccount: ADYEN_MERCHANT_ACCOUNT,
         countryCode: paymentData.billingAddress.country || 'US',
-        capture: false // Only authorize, don't capture yet
+        capture: false, // Only authorize, don't capture yet
+        returnUrl: ADYEN_SUCCESS_RETURN_URL,
       });
 
       if (adyenPayment.success && adyenPayment.pspReference) {

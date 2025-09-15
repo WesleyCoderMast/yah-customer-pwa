@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import { LatLngExpression, Icon, latLngBounds } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { VITE_SUPABASE_ANON_KEY } from '@/lib/config';
 
 // Fix for default markers in react-leaflet
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -119,7 +120,7 @@ export default function RouteMap({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${VITE_SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify(requestBody)
       });
