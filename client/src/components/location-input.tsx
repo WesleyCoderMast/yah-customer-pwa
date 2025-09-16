@@ -63,66 +63,76 @@ export default function LocationInput({
   const pickupDropdownRef = useRef<HTMLDivElement>(null);
   const dropoffDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Debounced search function with improved rate limiting
-  const debouncedSearch = useCallback((query: string, isPickup: boolean) => {
-    const timeoutId = setTimeout(async () => {
-      if (query.length < 2) {
-        if (isPickup) {
+  // Debounced search with explicit timeout refs to avoid firing on every keypress
+  const pickupTimeoutRef = useRef<number | null>(null);
+  const dropoffTimeoutRef = useRef<number | null>(null);
+
+  const scheduleSearch = useCallback((query: string, isPickup: boolean) => {
+    const clear = (id: number | null) => { if (id) window.clearTimeout(id); };
+    const set = (fn: () => void) => window.setTimeout(fn, 500);
+
+    if (isPickup) {
+      clear(pickupTimeoutRef.current);
+      pickupTimeoutRef.current = set(async () => {
+        if (query.length < 2) {
           setPickupSuggestions([]);
           setShowPickupSuggestions(false);
-        } else {
-          setDropoffSuggestions([]);
-          setShowDropoffSuggestions(false);
+          return;
         }
-        return;
-      }
-
-      if (isPickup) {
         setIsLoadingPickup(true);
-      } else {
-        setIsLoadingDropoff(true);
-      }
-
-      try {
-        const suggestions = await locationSearchService.searchLocations(query);
-        if (isPickup) {
+        try {
+          const suggestions = await locationSearchService.searchLocations(query);
           setPickupSuggestions(suggestions);
           setShowPickupSuggestions(suggestions.length > 0);
-        } else {
-          setDropoffSuggestions(suggestions);
-          setShowDropoffSuggestions(suggestions.length > 0);
-        }
-      } catch (error) {
-        console.error('Error fetching location suggestions:', error);
-        // Show empty state instead of hiding dropdown on error
-        if (isPickup) {
+        } catch (error) {
+          console.error('Error fetching location suggestions:', error);
           setPickupSuggestions([]);
           setShowPickupSuggestions(true);
-        } else {
+        } finally {
+          setIsLoadingPickup(false);
+        }
+      }) as unknown as number;
+    } else {
+      clear(dropoffTimeoutRef.current);
+      dropoffTimeoutRef.current = set(async () => {
+        if (query.length < 2) {
+          setDropoffSuggestions([]);
+          setShowDropoffSuggestions(false);
+          return;
+        }
+        setIsLoadingDropoff(true);
+        try {
+          const suggestions = await locationSearchService.searchLocations(query);
+          setDropoffSuggestions(suggestions);
+          setShowDropoffSuggestions(suggestions.length > 0);
+        } catch (error) {
+          console.error('Error fetching location suggestions:', error);
           setDropoffSuggestions([]);
           setShowDropoffSuggestions(true);
-        }
-      } finally {
-        if (isPickup) {
-          setIsLoadingPickup(false);
-        } else {
+        } finally {
           setIsLoadingDropoff(false);
         }
-      }
-    }, 500); // Increased debounce to 500ms to reduce API calls
-
-    return () => clearTimeout(timeoutId);
+      }) as unknown as number;
+    }
   }, []);
 
   const handlePickupChange = (value: string) => {
     onPickupChange(value);
-    debouncedSearch(value, true);
+    scheduleSearch(value, true);
   };
 
   const handleDropoffChange = (value: string) => {
     onDropoffChange(value);
-    debouncedSearch(value, false);
+    scheduleSearch(value, false);
   };
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (pickupTimeoutRef.current) window.clearTimeout(pickupTimeoutRef.current);
+      if (dropoffTimeoutRef.current) window.clearTimeout(dropoffTimeoutRef.current);
+    };
+  }, []);
 
   const selectPickupSuggestion = (suggestion: LocationSuggestion) => {
     onPickupChange(suggestion.formattedAddress, suggestion.lat, suggestion.lng);

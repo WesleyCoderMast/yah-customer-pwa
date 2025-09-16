@@ -334,10 +334,10 @@ export const yahMessages = pgTable("yah_messages", {
 
 // Driver reports table
 export const driverReports = pgTable("driver_reports", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  customerId: varchar("customer_id").notNull().references(() => customers.id),
-  driverId: varchar("driver_id").notNull().references(() => drivers.id),
-  rideId: varchar("ride_id").notNull().references(() => rides.id),
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: uuid("customer_id").notNull().references(() => customers.id),
+  driverId: uuid("driver_id").notNull().references(() => drivers.id),
+  rideId: uuid("ride_id").notNull().references(() => rides.id),
   reportReason: text("report_reason").notNull(),
   description: text("description"),
   status: varchar("status").default("pending"), // pending, reviewed, resolved

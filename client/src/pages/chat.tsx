@@ -141,6 +141,13 @@ export default function Chat() {
     const loadMessages = async () => {
       if (!user?.id) return;
 
+      // Don't load messages if we don't have a chat session
+      if (!chatSession) {
+        console.log("No chat session available, skipping message load");
+        setMessages([]);
+        return;
+      }
+
       try {
         let query = supabase
           .from("yah_messages")
@@ -148,32 +155,24 @@ export default function Chat() {
           .eq("is_deleted", false)
           .order("created_at", { ascending: true });
 
-        // First, let's check what messages exist for debugging
-        const { data: allMessages } = await supabase
-          .from("yah_messages")
-          .select("*")
-          .eq("is_deleted", false);
-
-        console.log("All messages in database:", allMessages);
-
         // Filter by chat_session_id if available, otherwise by ride_id
-        if (chatSession?.id) {
+        if (chatSession.id) {
           query = query.eq("chat_session_id", chatSession.id);
           console.log("Filtering by chat_session_id:", chatSession.id);
-        } else if (chatSession?.ride_id) {
+        } else if (chatSession.ride_id) {
           query = query.eq("ride_id", chatSession.ride_id);
           console.log("Filtering by ride_id:", chatSession.ride_id);
         } else {
-          // If no session yet, try to load messages by user participation
-          query = query.or(`sender_by.eq.${user.id}`);
-          console.log("Filtering by sender_by:", user.id);
+          console.log("No valid chat session ID or ride ID, skipping message load");
+          setMessages([]);
+          return;
         }
 
         const { data, error } = await query;
 
         console.log("Loading messages for:", {
-          chatSessionId: chatSession?.id,
-          rideId: chatSession?.ride_id,
+          chatSessionId: chatSession.id,
+          rideId: chatSession.ride_id,
           userId: user.id,
         });
         console.log("Messages data:", data);
@@ -199,7 +198,8 @@ export default function Chat() {
           setMessages(formattedMessages);
           console.log("Loaded historical messages:", formattedMessages.length);
         } else {
-          console.log("No historical messages found");
+          console.log("No historical messages found for this chat session");
+          setMessages([]);
         }
       } catch (error) {
         console.error("Error loading messages:", error);

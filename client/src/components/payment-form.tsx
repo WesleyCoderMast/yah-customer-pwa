@@ -19,10 +19,10 @@ interface PaymentFormProps {
 }
 
 export default function PaymentForm({ 
-  rideId, 
-  requestId, 
-  driverInfo, 
-  amount, 
+  rideId,
+  requestId,
+  driverInfo,
+  amount,
   onPaymentSuccess, 
   onCancel 
 }: PaymentFormProps) {

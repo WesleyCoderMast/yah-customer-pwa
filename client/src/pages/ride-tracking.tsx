@@ -308,7 +308,21 @@ export default function RideTracking() {
     }
   };
 
-  const canCancelRide = ['pending', 'searching_driver', 'driver_assigned'].includes(ride.status);
+  const canCancelRide = ['pending', 'searching_driver', 'driver_assigned', 'accepted'].includes(ride.status);
+
+  const finishRide = async () => {
+    try {
+      await apiRequest('PATCH', `/api/rides/${params?.rideId}`, {
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      });
+      toast({ title: 'Ride Finished', description: 'Thank you for riding with us.' });
+      queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/rides'] });
+    } catch (e: any) {
+      toast({ title: 'Unable to finish ride', description: e?.message || 'Unknown error', variant: 'destructive' });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -392,7 +406,8 @@ export default function RideTracking() {
                 Your Driver
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Driver Profile */}
               <div className="flex items-center space-x-4">
                 <div className="w-16 h-16 bg-gradient-gold rounded-full flex items-center justify-center">
                   <i className="fas fa-user text-yah-dark text-xl"></i>
@@ -410,20 +425,26 @@ export default function RideTracking() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col space-y-2">
+                {/* Primary Actions Row */}
                 <div className="flex space-x-2">
                   <Button 
                     onClick={() => setLocation('/chat')} 
-                    className="bg-yah-gold hover:bg-yah-gold/90 text-yah-dark font-semibold px-4 py-2"
+                    className="flex-1 bg-yah-gold hover:bg-yah-gold/90 text-yah-dark font-semibold"
                     data-testid="button-chat-driver"
                   >
                     <i className="fas fa-comments mr-2"></i>
                     Chat
                   </Button>
+                  
                   {/* Pay Button - Show when ride is completed and has fare */}
                   {ride.status === 'completed' && ride.total_fare && parseFloat(ride.total_fare) > 0 && (
                     <Button 
                       onClick={onPay}
-                      className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2"
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold"
                       data-testid="button-pay-driver"
                     >
                       <i className="fas fa-credit-card mr-2"></i>
@@ -431,6 +452,29 @@ export default function RideTracking() {
                     </Button>
                   )}
                 </div>
+
+                {/* Ride Control Actions - Show when ride is accepted */}
+                {ride.status === 'accepted' && (
+                  <div className="flex space-x-2">
+                    <Button 
+                      onClick={finishRide}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold"
+                      data-testid="button-finish-ride"
+                    >
+                      <i className="fas fa-flag-checkered mr-2"></i>
+                      Finish Ride
+                    </Button>
+                    <Button 
+                      onClick={() => setShowCancel(true)}
+                      variant="destructive"
+                      className="flex-1 font-semibold"
+                      data-testid="button-cancel-ride"
+                    >
+                      <i className="fas fa-ban mr-2"></i>
+                      Cancel & Report
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
