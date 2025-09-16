@@ -437,14 +437,13 @@ export class DatabaseStorage implements IStorage {
       .from('rides')
       .update({ 
         status: "cancelled",
-        cancelledAt: new Date().toISOString(),
-        cancellationReason: reason,
-        updatedAt: new Date().toISOString(),
+        cancelled_at: new Date().toISOString(),
+        cancellation_reason: reason,
       })
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) {
       throw new Error(`Failed to cancel ride: ${error.message}`);
     }

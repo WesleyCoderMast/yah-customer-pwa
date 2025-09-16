@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { apiRequest } from "@/lib/queryClient";
 import PaymentForm from "./payment-form";
-import { VITE_API_BASE_URL } from "@/lib/config";
+import { VITE_API_BASE_URL, VITE_ADYEN_MERCHANT_ACCOUNT } from "@/lib/config";
 
 interface DriverBidsProps {
   rideId: string;
@@ -17,22 +17,20 @@ interface DriverBidsProps {
 
 interface DriverBid {
   id: string;
-  bidAmount: string;
-  estimatedArrival: number;
-  driverMessage?: string;
+  estimated_fare_min: string | number;
+  estimated_fare_max: string | number;
+  estimated_duration: number;
+  notes?: string;
   status: string;
-  createdAt: string;
+  created_at: string;
   drivers: {
     id: string;
-    first_name: string;
-    last_name: string;
-    phone_number: string;
-    profile_image_url?: string;
-    rating: string;
-    vehicle_make: string;
-    vehicle_model: string;
-    vehicle_color: string;
-    license_plate: string;
+    name: string;
+    phone: string;
+    email?: string;
+    vehicleType: string;
+    profilePhoto?: string;
+    rating?: string;
   };
 }
 
@@ -40,6 +38,14 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isSelecting, setIsSelecting] = useState(false);
+
+  // Generate Yah driver ID format
+  const generateYahDriverId = (driverId: string, driverName?: string) => {
+    // Extract numeric part from driver ID or generate a random number
+    const numericPart = driverId.replace(/\D/g, '').slice(-4) || Math.floor(Math.random() * 9999).toString().padStart(4, '0');
+    const displayName = driverName ? ` ${driverName}` : ' Driver';
+    return `Yah-${numericPart}${displayName}`;
+  };
 
   // Fetch driver bids for this ride
   const { data: bidsData, isLoading } = useQuery({
@@ -67,6 +73,83 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
   const handlePaymentCancel = () => {
     setSelectedDriverData(null);
     setIsSelecting(false);
+  };
+
+  // Create payment link for driver selection
+  const handleCreatePaymentLink = async (bid: DriverBid) => {
+    try {
+      setIsSelecting(true);
+      
+      // Calculate fare amount
+      const fareAmount = parseFloat(String(bid.estimated_fare_max ?? '0'));
+      const amountMinor = Math.round(fareAmount * 100); // Convert to minor units
+      
+      // Generate Yah driver ID
+      const yahDriverId = bid.drivers?.id ? generateYahDriverId(bid.drivers.id, bid.drivers.name) : 'Yah-0000 Driver';
+      
+      // Create shorter reference (max 80 chars for Adyen)
+      const shortRideId = rideId.substring(0, 8); // First 8 chars of ride ID
+      const shortBidId = bid.id.substring(0, 8); // First 8 chars of bid ID
+      const reference = `R${shortRideId}B${shortBidId}`; // Format: R12345678B87654321 (18 chars)
+      
+      // Create payment link
+      const resp = await fetch(`${VITE_API_BASE_URL}/api/payments/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          merchantAccount: VITE_ADYEN_MERCHANT_ACCOUNT,
+          amount: { currency: 'USD', value: amountMinor },
+          reference: reference,
+          description: `Payment for ride with ${yahDriverId}`,
+          shopperLocale: 'en_US',
+          returnUrl: `${window.location.origin}/ride/${rideId}?payment_success=true&psp_reference={pspReference}&result_code={resultCode}`, // Return to ride tracking page with payment success params
+          metadata: {
+            rideId: rideId,
+            bidId: bid.id,
+            driverId: bid.drivers?.id,
+            yahDriverId: yahDriverId
+          }
+        })
+      });
+      
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Failed to create payment link');
+      
+      // Open payment link avoiding popup blockers
+      if (data.url) {
+        // Attempt to use a window opened in the click handler context
+        const newWin = window.open('about:blank', '_blank');
+        if (newWin && !newWin.closed) {
+          newWin.opener = null;
+          newWin.location.replace(data.url);
+        } else {
+          // Fallback to anchor click
+          const a = document.createElement('a');
+          a.href = data.url;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
+        toast({
+          title: 'Payment Link Created',
+          description: 'A secure payment page has been opened. Complete your payment to confirm this driver.'
+        });
+        // Call the driver selected callback to refresh the ride data
+        onDriverSelected?.();
+      } else {
+        throw new Error('No payment URL received');
+      }
+    } catch (e: any) {
+      toast({ 
+        title: 'Unable to create payment link', 
+        description: e?.message || 'Unknown error', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsSelecting(false);
+    }
   };
 
   // If payment form is shown, render it instead of driver list
@@ -166,18 +249,18 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-12 h-12 border-2 border-primary/20">
-                      <AvatarImage src={bid.drivers?.profile_image_url} />
+                      <AvatarImage src={bid.drivers?.profilePhoto} />
                       <AvatarFallback className="bg-primary text-primary-foreground font-bold text-sm">
-                        {`${(bid.drivers?.first_name || '').charAt(0)}${(bid.drivers?.last_name || '').charAt(0)}`.toUpperCase() || 'DR'}
+                        {bid.drivers?.id ? generateYahDriverId(bid.drivers.id, bid.drivers.name).substring(0, 2).toUpperCase() : 'DR'}
                       </AvatarFallback>
                     </Avatar>
                     <h3 className="font-bold text-primary text-lg">
-                      {`${bid.drivers?.first_name ?? ''} ${bid.drivers?.last_name ?? ''}`.trim() || 'Driver Available'}
+                      {bid.drivers?.id ? generateYahDriverId(bid.drivers.id, bid.drivers.name) : 'Driver Available'}
                     </h3>
                   </div>
                   <Badge className="bg-green-500/20 text-green-400 text-xl font-bold px-3 py-1">
                     {(() => {
-                      const num = parseFloat(String(bid.bidAmount ?? ''));
+                      const num = parseFloat(String(bid.estimated_fare_max ?? ''));
                       return isNaN(num) ? '$—' : `$${num.toFixed(2)}`;
                     })()}
                   </Badge>
@@ -190,21 +273,16 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
                       <i className="fas fa-star text-yellow-400 mr-1"></i>
                       {bid.drivers?.rating ? Number(bid.drivers.rating).toFixed(1) : '4.8'} rating
                     </span>
-                    {bid.estimatedArrival ? (
+                    {bid.estimated_duration ? (
                       <span className="flex items-center">
                         <i className="fas fa-clock text-blue-400 mr-1"></i>
-                        {bid.estimatedArrival} min arrival
+                        {bid.estimated_duration} min arrival
                       </span>
                     ) : null}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     <i className="fas fa-car text-gray-400 mr-2"></i>
-                    {(() => {
-                      const d = bid.drivers;
-                      if (!d) return 'Vehicle Information Unavailable';
-                      const parts = [d.vehicle_make, d.vehicle_model, d.vehicle_color, d.license_plate].filter(Boolean);
-                      return parts.length ? parts.join(' • ') : 'Vehicle Information Unavailable';
-                    })()}
+                    {bid.drivers?.vehicleType || 'Vehicle Information Unavailable'}
                   </div>
                   <div className="text-xs text-muted-foreground/70">
                     <i className="fas fa-check-circle text-green-400 mr-2"></i>
@@ -213,7 +291,19 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
                 </div>
               </div>
               
-              {/* Mobile-optimized button */}
+              {/* Payment Link Button */}
+              <Button
+                onClick={() => handleCreatePaymentLink(bid)}
+                disabled={isSelecting}
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-12 text-lg font-semibold"
+                data-testid={`button-select-driver-${bid.id}`}
+              >
+                <i className="fas fa-credit-card mr-2"></i>
+                {isSelecting ? 'Creating Payment...' : 'Select & Pay'}
+              </Button>
+              
+              {/* Commented out old Select & Pay button functionality */}
+              {/* 
               <Button
                 onClick={() => handleDriverSelection(bid.id, bid)}
                 disabled={isSelecting}
@@ -223,15 +313,16 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
                 <i className="fas fa-credit-card mr-2"></i>
                 Select & Pay
               </Button>
+              */}
               
-              {bid.driverMessage && (
-                <div className="mt-3 p-3 bg-primary/10 rounded-md">
-                  <p className="text-sm text-muted-foreground">
-                    <i className="fas fa-comment mr-2"></i>
-                    "{bid.driverMessage}"
-                  </p>
-                </div>
-              )}
+                    {bid.notes && (
+                      <div className="mt-3 p-3 bg-primary/10 rounded-md">
+                        <p className="text-sm text-muted-foreground">
+                          <i className="fas fa-comment mr-2"></i>
+                          "{bid.notes}"
+                        </p>
+                      </div>
+                    )}
               
             </div>
           ))}

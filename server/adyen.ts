@@ -188,7 +188,7 @@ export class AdyenClient {
         merchantAccount: ADYEN_MERCHANT_ACCOUNT,
         amount: modificationAmount,
         originalReference: pspReference,
-        reference: `capture-${pspReference}-${Date.now()}`
+        reference: `CAP${pspReference.substring(0, 8)}${Date.now().toString().slice(-6)}`
       };
 
       const response = await checkout.ModificationsApi.captureAuthorisedPayment(pspReference, request);
@@ -239,7 +239,7 @@ export class AdyenClient {
         merchantAccount: ADYEN_MERCHANT_ACCOUNT,
         amount: modificationAmount,
         originalReference: pspReference,
-        reference: `refund-${pspReference}-${Date.now()}`
+        reference: `REF${pspReference.substring(0, 8)}${Date.now().toString().slice(-6)}`
       };
 
       const response = await checkout.ModificationsApi.refundCapturedPayment(pspReference, request);

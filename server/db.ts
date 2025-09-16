@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@shared/schema";
 import dotenv from "dotenv"; // Import dotenv
-import { DATABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_SUPABASE_URL } from "./config";
+import { DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY, VITE_SUPABASE_ANON_KEY, VITE_SUPABASE_URL } from "./config";
 
 dotenv.config();
 
@@ -11,11 +11,11 @@ dotenv.config();
 let supabase: any = null;
 let db: any = null;
 
-if (VITE_SUPABASE_URL && VITE_SUPABASE_ANON_KEY) {
+if (VITE_SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
   // Use Supabase client for REST API connection
   supabase = createClient(
     VITE_SUPABASE_URL,
-    VITE_SUPABASE_ANON_KEY
+    SUPABASE_SERVICE_ROLE_KEY
   );
   
   console.log("Using Supabase client for database operations");

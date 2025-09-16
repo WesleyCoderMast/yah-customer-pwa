@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import DriverBids from "@/components/driver-bids";
 import type { Ride } from "@shared/schema";
-import { VITE_API_BASE_URL, VITE_ADYEN_CLIENT_KEY, VITE_ADYEN_ENVIRONMENT } from "@/lib/config";
+import { VITE_API_BASE_URL, VITE_ADYEN_MERCHANT_ACCOUNT } from "@/lib/config";
+import { supabase } from "@/lib/supabase";
 
 export default function RideTracking() {
   const [match, params] = useRoute("/ride/:rideId");
@@ -25,8 +26,6 @@ export default function RideTracking() {
   const [rating, setRating] = useState<1 | 2 | null>(null);
   const [ratingEmoji, setRatingEmoji] = useState("");
   const [showPayment, setShowPayment] = useState(false);
-  const [dropInMounted, setDropInMounted] = useState(false);
-  const [adyenSession, setAdyenSession] = useState<any>(null);
 
   const { data: rideData, isLoading } = useQuery({
     queryKey: ['/api/rides', params?.rideId || ''],
@@ -81,30 +80,105 @@ export default function RideTracking() {
   const ride = (rideData as any)?.ride;
   const driver = (rideData as any)?.ride?.driver;
 
+  // Generate Yah driver ID format
+  const generateYahDriverId = (driverId: string, driverName?: string) => {
+    // Extract numeric part from driver ID or generate a random number
+    const numericPart = driverId.replace(/\D/g, '').slice(-4) || Math.floor(Math.random() * 9999).toString().padStart(4, '0');
+    const displayName = driverName ? ` ${driverName}` : ' Driver';
+    return `Yah-${numericPart}${displayName}`;
+  };
+
   useEffect(() => {
     if (ride?.status === 'completed' && !ride.customerRating) {
       setShowRating(true);
     }
   }, [ride]);
 
-  async function ensureAdyenScript(): Promise<void> {
-    if (document.getElementById('adyen-dropin-js')) return;
-    await new Promise<void>((resolve, reject) => {
-      const s = document.createElement('script');
-      s.id = 'adyen-dropin-js';
-      s.src = "https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.57.0/adyen.js".replace('live', VITE_ADYEN_ENVIRONMENT === 'live' ? 'live' : 'test');
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Failed to load Adyen Drop-in'));
-      document.head.appendChild(s);
-    });
-    if (!document.getElementById('adyen-dropin-css')) {
-      const l = document.createElement('link');
-      l.id = 'adyen-dropin-css';
-      l.rel = 'stylesheet';
-      l.href = "https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.57.0/adyen.css".replace('live', VITE_ADYEN_ENVIRONMENT === 'live' ? 'live' : 'test');
-      document.head.appendChild(l);
+  // Realtime: listen for server trigger notification via inserting into yah_chat_sessions for this ride
+  useEffect(() => {
+    if (!params?.rideId) return;
+
+    // Subscribe to postgres insert on yah_chat_sessions filtered by ride
+    const channel = supabase
+      .channel(`chat_room_${params.rideId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'yah_chat_sessions', filter: `ride_id=eq.${params.rideId}` },
+        (payload) => {
+          try {
+            toast({
+              title: 'Chat ready',
+              description: 'Your driver chat room is ready. Tap to open.',
+            });
+            // Refresh ride data
+            queryClient.invalidateQueries({ queryKey: ['/api/rides', params.rideId] });
+          } catch (e) {
+            // no-op
+          }
+        }
+      )
+      .subscribe((status) => {
+        // Optionally log status
+        // console.log('Realtime channel status:', status)
+      });
+
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  }, [params?.rideId, queryClient, toast]);
+
+  // Check for payment success when returning from payment
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentSuccess = urlParams.get('payment_success');
+    const pspReference = urlParams.get('psp_reference');
+    const resultCode = urlParams.get('result_code');
+
+    if (paymentSuccess === 'true' && pspReference && resultCode) {
+      // Payment was successful, update the ride status
+      handlePaymentSuccess(pspReference, resultCode);
+      
+      // Clean up URL parameters
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
     }
-  }
+  }, []);
+
+  // Handle payment success
+  const handlePaymentSuccess = async (pspReference: string, resultCode: string) => {
+    try {
+      // Call backend to update ride status and payment info
+      const response = await fetch(`${VITE_API_BASE_URL}/api/rides/${params?.rideId}/payment-success`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pspReference,
+          resultCode,
+          rideId: params?.rideId
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Payment Successful!",
+          description: "Your payment has been processed successfully.",
+        });
+        
+        // Refresh ride data to show updated status
+        queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
+      } else {
+        throw new Error('Failed to update ride status');
+      }
+    } catch (error: any) {
+      console.error('Payment success handling error:', error);
+      toast({
+        title: "Payment Processed",
+        description: "Your payment was successful, but there was an issue updating the ride status.",
+        variant: "destructive",
+      });
+    }
+  };
+
 
   async function onPay() {
     try {
@@ -124,58 +198,63 @@ export default function RideTracking() {
         // Assume already minor units
         amountMinor = Math.round(numFare);
       }
-      const resp = await fetch(`${VITE_API_BASE_URL}/api/payments/session`, {
+      
+      // Generate Yah driver ID for payment description
+      const yahDriverId = driver ? generateYahDriverId(driver.id, driver.name) : 'Yah-0000 Driver';
+      
+      // Create shorter reference (max 80 chars for Adyen)
+      const shortRideId = ride.id.substring(0, 8); // First 8 chars of ride ID
+      const reference = `R${shortRideId}`; // Format: R12345678 (9 chars)
+      
+      // Create payment link instead of session
+      const resp = await fetch(`${VITE_API_BASE_URL}/api/payments/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          merchantAccount: VITE_ADYEN_MERCHANT_ACCOUNT,
           amount: { currency: 'USD', value: amountMinor },
-          reference: `ride-${ride.id}`,
-          returnUrl: window.location.origin + `/rides`,
-          shopperReference: (user as any)?.id
+          reference: reference,
+          description: `Payment for ride with ${yahDriverId}`,
+          shopperLocale: 'en_US',
+          returnUrl: `${window.location.origin}/ride/${ride.id}?payment_success=true&psp_reference={pspReference}&result_code={resultCode}`, // Return to current ride tracking page with payment success params
+          metadata: {
+            shopperReference: (user as any)?.id,
+            rideId: ride.id,
+            driverId: driver?.id,
+            yahDriverId: yahDriverId
+          }
         })
       });
       const data = await resp.json();
-      if (!data.success) throw new Error(data.error || 'Failed to create session');
-      setAdyenSession(data.session);
-      setShowPayment(true);
+      if (!data.success) throw new Error(data.error || 'Failed to create payment link');
+      
+      // Open payment link in new tab
+      if (data.url) {
+        // Try opening synchronously to avoid popup blockers
+        const newWin = window.open('about:blank', '_blank');
+        if (newWin && !newWin.closed) {
+          newWin.opener = null;
+          newWin.location.replace(data.url);
+        } else {
+          const a = document.createElement('a');
+          a.href = data.url;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
+        toast({
+          title: 'Payment Link Created',
+          description: 'A secure payment page has been opened in a new tab. Complete your payment there.'
+        });
+      } else {
+        throw new Error('No payment URL received');
+      }
     } catch (e: any) {
-      toast({ title: 'Unable to start payment', description: e?.message || 'Unknown', variant: 'destructive' });
+      toast({ title: 'Unable to create payment link', description: e?.message || 'Unknown', variant: 'destructive' });
     }
   }
-
-  useEffect(() => {
-    async function mountDropin() {
-      if (!showPayment || !adyenSession) return;
-      await ensureAdyenScript();
-      // @ts-ignore
-      const checkout = await new (window as any).AdyenCheckout({
-        clientKey: VITE_ADYEN_CLIENT_KEY,
-        environment: VITE_ADYEN_ENVIRONMENT,
-        session: adyenSession,
-        analytics: { enabled: false },
-        onPaymentCompleted: () => {
-          setShowPayment(false);
-          setAdyenSession(null);
-          setDropInMounted(false);
-          queryClient.invalidateQueries({ queryKey: ['/api/rides'] });
-          toast({ title: 'Payment successful' });
-        },
-        onError: (err: any) => {
-          console.error(err);
-          toast({ title: 'Payment error', description: err?.message || 'Unknown', variant: 'destructive' });
-        }
-      });
-      const el = document.getElementById('dropin-container');
-      if (el) {
-        // Clear previous content before re-mounting
-        el.innerHTML = '';
-        // @ts-ignore
-        checkout.create('dropin').mount(el);
-        setDropInMounted(true);
-      }
-    }
-    mountDropin();
-  }, [showPayment, adyenSession]);
 
   if (isLoading) {
     return (
@@ -319,7 +398,7 @@ export default function RideTracking() {
                   <i className="fas fa-user text-yah-dark text-xl"></i>
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-bold text-lg text-foreground">{driver.name || 'Driver'}</h3>
+                  <h3 className="font-bold text-lg text-foreground">{generateYahDriverId(driver.id, driver.name)}</h3>
                   <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                     <div className="flex items-center">
                       <i className="fas fa-star text-yah-gold mr-1"></i>
@@ -331,14 +410,27 @@ export default function RideTracking() {
                     </div>
                   </div>
                 </div>
-                <Button 
-                  onClick={() => setLocation('/chat')} 
-                  className="bg-yah-gold hover:bg-yah-gold/90 text-yah-dark font-semibold px-4 py-2"
-                  data-testid="button-chat-driver"
-                >
-                  <i className="fas fa-comments mr-2"></i>
-                  Chat
-                </Button>
+                <div className="flex space-x-2">
+                  <Button 
+                    onClick={() => setLocation('/chat')} 
+                    className="bg-yah-gold hover:bg-yah-gold/90 text-yah-dark font-semibold px-4 py-2"
+                    data-testid="button-chat-driver"
+                  >
+                    <i className="fas fa-comments mr-2"></i>
+                    Chat
+                  </Button>
+                  {/* Pay Button - Show when ride is completed and has fare */}
+                  {ride.status === 'completed' && ride.total_fare && parseFloat(ride.total_fare) > 0 && (
+                    <Button 
+                      onClick={onPay}
+                      className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2"
+                      data-testid="button-pay-driver"
+                    >
+                      <i className="fas fa-credit-card mr-2"></i>
+                      Pay ${parseFloat(ride.total_fare).toFixed(2)}
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -382,26 +474,7 @@ export default function RideTracking() {
 
         {/* Action Buttons */}
         <div className="space-y-3">
-          {(parseFloat(ride.total_fare || '0') > 0) && (
-            <Dialog open={showPayment} onOpenChange={(open) => { setShowPayment(open); if (!open) { setDropInMounted(false); setAdyenSession(null); } }}>
-              <div className="space-y-3">
-                <Button 
-                  onClick={onPay}
-                  className="w-full bg-gradient-gold text-yah-darker font-semibold"
-                  data-testid="button-pay"
-                >
-                  <i className="fas fa-credit-card mr-2"></i>
-                  Pay ${parseFloat(ride.total_fare || '0').toFixed(2)}
-                </Button>
-              </div>
-              <DialogContent className="bg-yah-darker border-yah-gold/20">
-                <DialogHeader>
-                  <DialogTitle className="text-yah-gold">Complete Payment</DialogTitle>
-                </DialogHeader>
-                <div id="dropin-container" className="min-h-[280px]" />
-              </DialogContent>
-            </Dialog>
-          )}
+          {/* Pay button moved to driver details card */}
           {canCancelRide && (
             <Dialog open={showCancel} onOpenChange={setShowCancel}>
               <DialogTrigger asChild>
@@ -463,7 +536,7 @@ export default function RideTracking() {
               <DialogTitle className="text-yah-gold text-center">Rate Your Ride</DialogTitle>
             </DialogHeader>
             <div className="space-y-6 text-center">
-              <p className="text-gray-300">How was your ride with {driver?.firstName}?</p>
+              <p className="text-gray-300">How was your ride with {driver ? generateYahDriverId(driver.id, driver.name) : 'your driver'}?</p>
               
               {/* Rating Buttons */}
               <div className="flex justify-center space-x-6">

@@ -503,6 +503,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Handle payment success
+  app.post("/api/rides/:id/payment-success", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { pspReference, resultCode, rideId } = req.body;
+
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        return res.status(400).json({ message: "Invalid ride ID format" });
+      }
+
+      // Validate required fields
+      if (!pspReference || !resultCode) {
+        return res.status(400).json({ message: "Missing required fields: pspReference, resultCode" });
+      }
+
+      // Check if payment was successful
+      const isPaymentSuccessful = resultCode === 'Authorised' || resultCode === 'Received';
+
+      if (isPaymentSuccessful) {
+        // Update ride status to completed if not already
+        const currentRide = await storage.getRide(id);
+        let updatedRide = currentRide;
+        
+        if (currentRide && currentRide.status !== 'completed') {
+          updatedRide = await storage.updateRide(id, {
+            status: 'completed',
+            completed_at: new Date()
+          });
+        }
+
+        // Update the payment record in the database
+        const { error: paymentError } = await supabaseAdmin
+          .from('adyen_payments')
+          .update({
+            status: resultCode,
+            psp_reference: pspReference,
+            updated_at: new Date().toISOString()
+          })
+          .eq('reference', req.body.reference || `R${id.substring(0, 8)}`);
+
+        if (paymentError) {
+          console.error('Error updating payment record:', paymentError);
+        }
+
+        // Log payment success
+        console.log(`Payment successful for ride ${id}: ${pspReference}`);
+
+        res.json({ 
+          success: true, 
+          message: "Payment processed successfully",
+          ride: updatedRide 
+        });
+      } else {
+        // Payment failed
+        res.json({ 
+          success: false, 
+          message: "Payment was not successful",
+          resultCode: resultCode 
+        });
+      }
+
+    } catch (error: any) {
+      console.error("Payment success handling error:", error);
+      res.status(500).json({ message: "Failed to process payment success" });
+    }
+  });
+
   // Ride request endpoints (driver bidding system)
 
   // Get all driver requests/bids for a ride

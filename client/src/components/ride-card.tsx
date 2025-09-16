@@ -16,6 +16,8 @@ export default function RideCard({ ride, isActive }: RideCardProps) {
       case 'pending':
       case 'searching_driver':
         return 'bg-yellow-500/20 text-yellow-400';
+      case 'accepted':
+        return 'bg-blue-500/20 text-blue-400';
       case 'driver_assigned':
       case 'driver_arriving':
         return 'bg-blue-500/20 text-blue-400';
@@ -36,6 +38,8 @@ export default function RideCard({ ride, isActive }: RideCardProps) {
       case 'pending':
       case 'searching_driver':
         return 'fa-search';
+      case 'accepted':
+        return 'fa-user-check';
       case 'driver_assigned':
         return 'fa-user-check';
       case 'driver_arriving':

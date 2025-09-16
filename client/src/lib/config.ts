@@ -14,14 +14,6 @@ export const config = {
     timeout: 10000
   },
 
-  // Payments (Adyen)
-  payments: {
-    adyen: {
-      // From server/config.ts example clientKey
-      clientKey: "test_3ZD3YVSQNNFARHSIVOXGQH5PAIYQKLGK",
-      environment: "test"
-    }
-  },
   
   // App Configuration
   app: {
@@ -44,6 +36,15 @@ export const config = {
     enableNotifications: true,
     enableOfflineMode: true,
     enableRealTimeTracking: true
+  },
+  
+  // Payment Configuration
+  payments: {
+    adyen: {
+      clientKey: "test_3ZD3YVSQNNFARHSIVOXGQH5PAIYQKLGK",
+      environment: "test", // "test" or "live"
+      merchantAccount: "YahGlobalMobilityLLCECOM"
+    }
   }
 };
 
@@ -56,6 +57,7 @@ export const VITE_APP_VERSION = config.app.version;
 export const VITE_APP_ENVIRONMENT = config.app.environment;
 export const VITE_ADYEN_CLIENT_KEY = config.payments.adyen.clientKey;
 export const VITE_ADYEN_ENVIRONMENT = config.payments.adyen.environment;
+export const VITE_ADYEN_MERCHANT_ACCOUNT = config.payments.adyen.merchantAccount;
 
 // Default export for easy importing
 export default config;

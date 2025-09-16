@@ -1,8 +1,69 @@
 import { Router, Request, Response } from 'express';
-import { paymentService, PaymentRequest, PayoutRequest } from './paymentService';
+import { paymentService, PaymentRequest, PayoutRequest, PaymentLinkRequest } from './paymentService';
 import { supabase } from './db';
 
 const router = Router();
+
+/**
+ * Create a payment link
+ * POST /api/payments/link
+ */
+router.post('/link', async (req: Request, res: Response) => {
+  try {
+    const linkData: PaymentLinkRequest = req.body;
+
+    // Validate required fields
+    if (!linkData.amount || !linkData.reference || !linkData.merchantAccount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: amount, reference, merchantAccount'
+      });
+    }
+
+    // Set default expiration to 24 hours from now
+    if (!linkData.expiresAt) {
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 24);
+      linkData.expiresAt = expiresAt;
+    }
+    console.log('************** payent link data ********************');
+    console.log(linkData);
+    // Create payment link
+    const result = await paymentService.createPaymentLink(linkData);
+
+    if (result.success) {
+      // Store payment link in database
+      const { error } = await supabase
+        .from('adyen_payments')
+        .insert({
+          psp_reference: result.id || 'pending',
+          amount: linkData.amount.value,
+          currency: linkData.amount.currency,
+          reference: linkData.reference,
+          status: 'payment_link_created',
+          payment_method: 'payment_link',
+          shopper_reference: linkData.metadata?.shopperReference,
+          metadata: linkData.metadata,
+          ride_id: linkData.metadata?.rideId,
+          driver_id: linkData.metadata?.driverId,
+          created_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error('Database error:', error);
+      }
+    }
+
+    res.json(result);
+
+  } catch (error: any) {
+    console.error('Payment link creation error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Payment link creation failed'
+    });
+  }
+});
 
 /**
  * Create a payment
@@ -453,38 +514,39 @@ router.get('/recipient/:recipientId', async (req: Request, res: Response) => {
 router.post('/webhook', async (req: Request, res: Response) => {
   try {
     console.log('Received webhook:', req.body);
-
+    console.log(JSON.stringify(req.body))
     // Process webhook
     const result = await paymentService.processWebhook(req.body);
 
     if (result.success) {
       // Store webhook event in database
-      const { error } = await supabase
-        .from('webhook_events')
-        .insert({
-          event_type: req.body.eventType,
-          psp_reference: req.body.pspReference,
-          merchant_account: req.body.merchantAccount,
-          event_data: req.body,
-          processed: true,
-          created_at: new Date().toISOString()
-        });
+      // const { error } = await supabase
+      //   .from('webhook_events')
+      //   .insert({
+      //     event_type: req.body.eventType,
+      //     psp_reference: req.body.pspReference,
+      //     merchant_account: req.body.merchantAccount,
+      //     event_data: req.body,
+      //     processed: true,
+      //     created_at: new Date().toISOString()
+      //   });
 
-      if (error) {
-        console.error('Database error:', error);
-      }
+      // if (error) {
+      //   console.error('Database error:', error);
+      // }
 
-      res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+      // Adyen requires a 200 OK with [accepted] body
+      res.status(200).send('[accepted]');
     } else {
-      res.status(400).json({ success: false, message: result.message });
+      // Still acknowledge to avoid retries; log for follow-up
+      console.warn('Webhook not processed:', result.message);
+      res.status(200).send('[accepted]');
     }
 
   } catch (error: any) {
     console.error('Webhook processing error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Webhook processing failed'
-    });
+    // Acknowledge to prevent endless retries; monitor logs for issues
+    res.status(200).send('[accepted]');
   }
 });
 

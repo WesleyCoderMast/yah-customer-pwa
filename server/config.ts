@@ -49,10 +49,11 @@ export const config = {
     adyen: {
       merchantAccount: "YahGlobalMobilityLLCECOM", // Replace with your merchant account
       username: "ws_470777@Company.YahGlobalMobilityLLC",
-      apiKey: "AQE2hmfxK43ObBJFw0m/n3Q5qf3VcYpFKp9FWmRa63epl2pCit5aPOWuQbOHhljNLwbcBBeJ4f04EMFdWw2+5HzctViMSCJMYAc=-9rYiSayAWruvjAxWUMymPJ8LhhbZKLJEh6g3IM80DTk=-i1ifq[EKB*E{,+JR28g",
+      apiKey: "AQE2hmfxK43ObBJFw0m/n3Q5qf3VcYpFKp9FWmRa63epl2pCit5aPOWuQbOHhljNLwbcBBeJ4f04EMFdWw2+5HzctViMSCJMYAc=-oOymd5ylbuwXvZcwbLLYrgGemKDc4MBoOv4CDKVv4K0=-i1ivGSh2ZGs3@Xk78IT",
       clientKey: "test_3ZD3YVSQNNFARHSIVOXGQH5PAIYQKLGK",
       returnUrl: 'https://yahapp.online/payment-success',
-      environment: "TEST" // TEST or LIVE
+      environment: "TEST", // TEST or LIVE
+      hmacKey: "FAA8F5C14875221F9DBB019E4860D526D2DC5153D857BBE4C5A958D5E41F9CF3"
     }
   }
 };
@@ -83,3 +84,4 @@ export const ADYEN_API_KEY = config.payments.adyen.apiKey;
 export const ADYEN_MERCHANT_ACCOUNT = config.payments.adyen.merchantAccount;
 export const ADYEN_ENVIRONMENT = config.payments.adyen.environment;
 export const ADYEN_SUCCESS_RETURN_URL = config.payments.adyen.returnUrl;
+export const ADYEN_HMAC_KEY = config.payments.adyen.hmacKey;

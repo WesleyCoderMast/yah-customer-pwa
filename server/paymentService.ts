@@ -1,7 +1,9 @@
 import Adyen from '@adyen/api-library';
 import { EnvironmentEnum } from '@adyen/api-library/lib/src/config';
-import { ADYEN_API_KEY, ADYEN_MERCHANT_ACCOUNT, ADYEN_ENVIRONMENT } from './config';
+import { ADYEN_API_KEY, ADYEN_MERCHANT_ACCOUNT, ADYEN_ENVIRONMENT, ADYEN_HMAC_KEY } from './config';
+import crypto from 'crypto';
 import { createAdyenPaymentRequest } from './adyen';
+import { supabase } from './db';
 
 // Initialize Adyen client
 const client = new Adyen.Client({
@@ -12,6 +14,7 @@ const client = new Adyen.Client({
 const checkout = new Adyen.CheckoutAPI(client);
 const transfers = new Adyen.TransfersAPI(client);
 const payouts = new Adyen.PayoutAPI(client);
+const paymentLinks = checkout.PaymentLinksApi;
 
 // Payment types and interfaces
 export interface PaymentRequest {
@@ -89,6 +92,30 @@ export interface PayoutResult {
   error?: string;
 }
 
+// Payment Link interfaces
+export interface PaymentLinkRequest {
+  merchantAccount: string;
+  reference: string;
+  amount: {
+    currency: string;
+    value: number; // Amount in minor units (cents)
+  };
+  description?: string;
+  shopperLocale?: string;
+  expiresAt?: Date; // Date object
+  allowedPaymentMethods?: string[];
+  blockedPaymentMethods?: string[];
+  metadata?: Record<string, string>;
+}
+
+export interface PaymentLinkResult {
+  success: boolean;
+  id?: string;
+  url?: string;
+  expiresAt?: Date;
+  error?: string;
+}
+
 export interface WebhookEvent {
   eventType: string;
   eventDate: string;
@@ -110,6 +137,49 @@ export class PaymentService {
 
   constructor(merchantAccount: string = ADYEN_MERCHANT_ACCOUNT) {
     this.merchantAccount = merchantAccount;
+  }
+
+  /**
+   * Create Adyen Payment Link
+   */
+  async createPaymentLink(input: PaymentLinkRequest): Promise<PaymentLinkResult> {
+    try {
+      console.log('Creating payment link:', input);
+
+      const request = {
+        merchantAccount: input.merchantAccount,
+        reference: input.reference,
+        amount: input.amount,
+        description: input.description,
+        shopperLocale: input.shopperLocale || 'en_US',
+        expiresAt: input.expiresAt,
+        allowedPaymentMethods: input.allowedPaymentMethods,
+        blockedPaymentMethods: input.blockedPaymentMethods,
+        metadata: input.metadata
+      };
+
+      const response = await paymentLinks.paymentLinks(request);
+
+      console.log('Payment link created:', {
+        id: response.id,
+        url: response.url,
+        expiresAt: response.expiresAt
+      });
+
+      return {
+        success: true,
+        id: response.id,
+        url: response.url,
+        expiresAt: response.expiresAt
+      };
+
+    } catch (error: any) {
+      console.error('Payment link creation error:', error);
+      return {
+        success: false,
+        error: error.message || 'Payment link creation failed'
+      };
+    }
   }
 
   /**
@@ -204,7 +274,7 @@ export class PaymentService {
         merchantAccount: this.merchantAccount,
         amount: amount,
         originalReference: pspReference,
-        reference: `capture-${pspReference}-${Date.now()}`
+        reference: `CAP${pspReference.substring(0, 8)}${Date.now().toString().slice(-6)}`
       };
 
       const response = await checkout.ModificationsApi.captureAuthorisedPayment(pspReference, request);
@@ -241,7 +311,7 @@ export class PaymentService {
         merchantAccount: this.merchantAccount,
         amount: amount,
         originalReference: pspReference,
-        reference: `refund-${pspReference}-${Date.now()}`
+        reference: `REF${pspReference.substring(0, 8)}${Date.now().toString().slice(-6)}`
       };
 
       const response = await checkout.ModificationsApi.refundCapturedPayment(pspReference, request);
@@ -287,7 +357,7 @@ export class PaymentService {
         metadata: payoutData.metadata
       };
 
-      const response = await payouts.storeDetailsAndSubmitThirdParty(request as any);
+      const response = await payouts.InitializationApi.storeDetailAndSubmitThirdParty(request as any);
 
       console.log('Payout response:', {
         pspReference: response.pspReference,
@@ -298,7 +368,6 @@ export class PaymentService {
         success: response.resultCode === 'Received',
         pspReference: response.pspReference,
         resultCode: response.resultCode,
-        status: response.status,
         details: response
       };
 
@@ -337,16 +406,16 @@ export class PaymentService {
         description: transferData.description || 'Internal transfer'
       };
 
-      const response = await transfers.transfers(request as any);
+      const response = await transfers.TransfersApi.transferFunds(request as any);
 
       console.log('Transfer response:', {
-        pspReference: response.pspReference,
+        reference: response.reference,
         status: response.status
       });
 
       return {
         success: response.status === 'received',
-        pspReference: response.pspReference,
+        pspReference: response.reference,
         resultCode: 'Transferred',
         status: response.status,
         details: response
@@ -384,7 +453,7 @@ export class PaymentService {
       try {
         const payoutRequest: PayoutRequest = {
           amount: payout.amount,
-          reference: `periodic-${payout.recipientType}-${payout.recipientId}-${Date.now()}`,
+          reference: `PER${payout.recipientType.substring(0, 3)}${payout.recipientId.substring(0, 8)}${Date.now().toString().slice(-6)}`,
           destination: {
             type: 'bankAccount',
             bankAccount: payout.bankAccount
@@ -429,43 +498,85 @@ export class PaymentService {
    */
   async processWebhook(webhookData: any): Promise<{ success: boolean; message: string }> {
     try {
-      console.log('Processing webhook:', {
-        eventType: webhookData.eventType,
-        pspReference: webhookData.pspReference,
-        merchantAccount: webhookData.merchantAccount
-      });
+      // Optional HMAC validation for classic payloads
+      const validateHmac = (payload: any): boolean => {
+        try {
+          const item = payload.NotificationRequestItem || payload;
+          const sig = item.additionalData?.hmacSignature;
+          if (!sig || !ADYEN_HMAC_KEY) return true; // skip if not configured
 
-      const event: WebhookEvent = {
-        eventType: webhookData.eventType,
-        eventDate: webhookData.eventDate,
-        merchantAccount: webhookData.merchantAccount,
-        pspReference: webhookData.pspReference,
-        originalReference: webhookData.originalReference,
-        amount: webhookData.amount,
-        success: webhookData.success,
-        reason: webhookData.reason,
-        additionalData: webhookData.additionalData
+          // Build signing data per Adyen docs (classic notifications)
+          const fields = [
+            item.pspReference || '',
+            item.originalReference || '',
+            item.merchantAccountCode || item.merchantAccount || '',
+            item.merchantReference || '',
+            String(item.amount?.value ?? ''),
+            item.amount?.currency || '',
+            item.eventCode || item.eventType || '',
+            String(item.success ?? '').toLowerCase(),
+          ];
+          const signingString = fields.map(v => v.replace(/\\:/g, '\\:')).join(':');
+          const key = Buffer.from(ADYEN_HMAC_KEY, 'hex');
+          const expected = crypto.createHmac('sha256', key).update(signingString, 'utf8').digest('base64');
+          return expected === sig;
+        } catch (e) {
+          console.warn('HMAC validation error (skipping):', (e as any)?.message);
+          return true; // do not block on validation errors
+        }
       };
 
-      // Process different event types
-      switch (event.eventType) {
-        case 'AUTHORISATION':
-          await this.handleAuthorisationEvent(event);
-          break;
-        case 'CAPTURE':
-          await this.handleCaptureEvent(event);
-          break;
-        case 'REFUND':
-          await this.handleRefundEvent(event);
-          break;
-        case 'PAYOUT':
-          await this.handlePayoutEvent(event);
-          break;
-        case 'TRANSFER':
-          await this.handleTransferEvent(event);
-          break;
-        default:
-          console.log(`Unhandled event type: ${event.eventType}`);
+      if (Array.isArray(webhookData?.notificationItems)) {
+        for (const item of webhookData.notificationItems) {
+          if (!validateHmac(item)) {
+            console.warn('Invalid HMAC signature for notification item');
+            continue; // skip invalid item but acknowledge overall
+          }
+        }
+      } else if (!validateHmac(webhookData)) {
+        console.warn('Invalid HMAC signature for webhook');
+        return { success: true, message: 'Invalid HMAC (acknowledged)' };
+      }
+      const handleSingle = async (payload: any) => {
+        const eventTypeRaw = payload.eventType || payload.eventCode || 'UNKNOWN';
+        const eventType = String(eventTypeRaw).toUpperCase();
+        const pspReference = payload.pspReference || payload.pspreference || payload.Pspreference;
+        const originalReference = payload.originalReference || payload.originalpspreference;
+        const success = typeof payload.success === 'boolean' ? payload.success : String(payload.success).toLowerCase() === 'true';
+
+        const normalized: WebhookEvent = {
+          eventType,
+          eventDate: payload.eventDate || new Date().toISOString(),
+          merchantAccount: payload.merchantAccount || payload.merchantaccount,
+          pspReference,
+          originalReference,
+          amount: payload.amount || (payload.amountValue && payload.amountCurrency ? { value: payload.amountValue, currency: payload.amountCurrency } : undefined),
+          success,
+          reason: payload.reason,
+          additionalData: payload.additionalData || payload.additionalDataJson,
+        };
+
+        switch (normalized.eventType) {
+          case 'AUTHORISATION':
+            await this.handleAuthorisationEvent(normalized);
+            break;
+          case 'CAPTURE':
+            await this.handleCaptureEvent(normalized);
+            break;
+          case 'REFUND':
+            await this.handleRefundEvent(normalized);
+            break;
+          default:
+            console.log(`Unhandled event type: ${normalized.eventType}`);
+        }
+      };
+
+      if (Array.isArray(webhookData?.notificationItems)) {
+        for (const item of webhookData.notificationItems) {
+          await handleSingle(item.NotificationRequestItem || item);
+        }
+      } else {
+        await handleSingle(webhookData);
       }
 
       return { success: true, message: 'Webhook processed successfully' };
@@ -481,9 +592,56 @@ export class PaymentService {
    */
   private async handleAuthorisationEvent(event: WebhookEvent): Promise<void> {
     console.log('Handling authorisation event:', event.pspReference);
-    // Update payment status in database
-    // Send confirmation email to customer
-    // Update ride status if applicable
+    
+    if (event.success) {
+      const paymentLinkId = (event.additionalData as any)?.paymentLinkId;
+      const lookupRef = paymentLinkId || event.pspReference;
+      // Update payment status in database
+      const { error: paymentError } = await supabase
+        .from('adyen_payments')
+        .update({
+          status: 'Authorised',
+          psp_reference: lookupRef,
+          updated_at: new Date().toISOString()
+        })
+        .eq('psp_reference', lookupRef);
+
+      if (paymentError) {
+        console.error('Error updating payment record:', paymentError);
+      }
+
+      // Try to find and update the associated ride
+      if (lookupRef) {
+        // Payment link payment: map to ride and driver, set ride accepted
+        const { data: paymentData } = await supabase
+          .from('adyen_payments')
+          .select('reference, metadata, ride_id, driver_id')
+          .eq('psp_reference', lookupRef)
+          .single();
+
+        const rideId = paymentData?.ride_id;
+        const driverId = paymentData?.driver_id;
+        console.log('******************* here is update riding ********************');
+        console.log(paymentData);
+        if (rideId && driverId) {
+          const { error: rideError } = await supabase
+            .from('rides')
+            .update({
+              status: 'accepted',
+              driver_id: driverId,
+              accepted_at: new Date().toISOString()
+            })
+            .eq('id', rideId);
+
+          if (rideError) {
+            console.error('Error updating ride to accepted:', rideError);
+          } else {
+            console.log(`Updated ride ${rideId} to accepted with driver ${driverId}`);
+            // Create chat session between customer and driver for this ride
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -491,9 +649,39 @@ export class PaymentService {
    */
   private async handleCaptureEvent(event: WebhookEvent): Promise<void> {
     console.log('Handling capture event:', event.pspReference);
+    const paymentLinkId = (event.additionalData as any)?.paymentLinkId;
+    const lookupRef = paymentLinkId || event.pspReference;
     // Update payment status in database
-    // Process driver payout
-    // Update ride status to completed
+    const { error: paymentError } = await supabase
+      .from('adyen_payments')
+      .update({
+        status: 'Captured',
+        psp_reference: lookupRef,
+        updated_at: new Date().toISOString()
+      })
+      .eq('psp_reference', lookupRef);
+
+    if (paymentError) {
+      console.error('Error updating payment (capture):', paymentError);
+    }
+
+    // Map to ride and complete it
+    const { data: paymentData } = await supabase
+      .from('adyen_payments')
+      .select('metadata')
+      .eq('psp_reference', lookupRef)
+      .single();
+
+    const rideId = paymentData?.metadata?.rideId;
+    if (rideId) {
+      const { error: rideError } = await supabase
+        .from('rides')
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('id', rideId);
+      if (rideError) {
+        console.error('Error updating ride (capture):', rideError);
+      }
+    }
   }
 
   /**
@@ -501,9 +689,35 @@ export class PaymentService {
    */
   private async handleRefundEvent(event: WebhookEvent): Promise<void> {
     console.log('Handling refund event:', event.pspReference);
+    const paymentLinkId = (event.additionalData as any)?.paymentLinkId;
+    const lookupRef = paymentLinkId || event.pspReference;
     // Update payment status in database
-    // Send refund confirmation email
-    // Update ride status if applicable
+    const { error: paymentError } = await supabase
+      .from('adyen_payments')
+      .update({
+        status: 'Refunded',
+        updated_at: new Date().toISOString()
+      })
+      .eq('psp_reference', lookupRef);
+
+    if (paymentError) {
+      console.error('Error updating payment (refund):', paymentError);
+    }
+
+    // Optional: mark ride as refunded note (keep completed status)
+    const { data: paymentData } = await supabase
+      .from('adyen_payments')
+      .select('metadata')
+      .eq('psp_reference', lookupRef)
+      .single();
+
+    const rideId = paymentData?.metadata?.rideId;
+    if (rideId) {
+      await supabase
+        .from('rides')
+        .update({ /* add refund annotation column later if needed */ })
+        .eq('id', rideId);
+    }
   }
 
   /**

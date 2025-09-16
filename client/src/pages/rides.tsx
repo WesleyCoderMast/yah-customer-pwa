@@ -21,9 +21,17 @@ export default function Rides() {
   });
 
   const rides = (ridesData as any)?.rides || [];
-  const activeRides = rides.filter((ride: Ride) => 
-    ['pending', 'searching_driver', 'driver_assigned', 'driver_arriving', 'driver_arrived', 'accepted', 'in_progress'].includes(ride.status)
-  );
+  const activeRides = rides
+    .filter((ride: Ride) => ['pending', 'searching_driver', 'driver_assigned', 'driver_arriving', 'driver_arrived', 'accepted', 'in_progress'].includes(ride.status))
+    .sort((a: Ride, b: Ride) => {
+      // Promote accepted rides to the top, then by created_at desc
+      const aAccepted = a.status === 'accepted' ? 1 : 0;
+      const bAccepted = b.status === 'accepted' ? 1 : 0;
+      if (aAccepted !== bAccepted) return bAccepted - aAccepted;
+      const aTime = new Date(a.created_at as any).getTime();
+      const bTime = new Date(b.created_at as any).getTime();
+      return bTime - aTime;
+    });
   const completedRides = rides.filter((ride: Ride) => 
     ['completed', 'cancelled'].includes(ride.status)
   );
