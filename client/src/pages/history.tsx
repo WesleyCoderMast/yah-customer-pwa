@@ -12,10 +12,29 @@ interface Ride {
   total_fare?: number | string | null;
   created_at: string;
   completed_at?: string | null;
+  person_preference_id?: number | null;
 }
 
 export default function History() {
   const { user } = useAuth();
+
+  const getDriverPreferenceText = (preferenceId: number | null) => {
+    switch (preferenceId) {
+      case 1:
+        return 'Female drivers only';
+      case 2:
+        return 'Male drivers only';
+      case 3:
+        return 'Deaf or hard-of-hearing drivers only';
+      case 4:
+        return 'Hearing drivers only';
+      case 5:
+        return 'Drivers comfortable with disabilities';
+      case 6:
+      default:
+        return 'No preference';
+    }
+  };
 
   const { data: rides, isLoading } = useQuery<Ride[]>({
     queryKey: ['/api/rides/history', user?.id],
@@ -155,6 +174,15 @@ export default function History() {
                       <p className="text-sm font-medium text-primary">{ride.pickup}</p>
                       <p className="text-sm text-muted-foreground">{ride.dropoff}</p>
                     </div>
+                  </div>
+                  <div className="flex items-start justify-between text-xs text-muted-foreground mt-2 gap-2">
+                    <div className="flex items-center flex-shrink-0">
+                      <i className="fas fa-user-check mr-1 text-yah-gold"></i>
+                      <span className="font-medium">Driver:</span>
+                    </div>
+                    <span className="text-right flex-1 min-w-0">
+                      {getDriverPreferenceText(ride.person_preference_id ?? null)}
+                    </span>
                   </div>
                 </div>
                 

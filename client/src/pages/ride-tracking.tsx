@@ -88,6 +88,42 @@ export default function RideTracking() {
     return `Yah-${numericPart}${displayName}`;
   };
 
+  const getDriverPreferenceText = (preferenceId: number | null) => {
+    switch (preferenceId) {
+      case 1:
+        return 'Female drivers only';
+      case 2:
+        return 'Male drivers only';
+      case 3:
+        return 'Deaf or hard-of-hearing drivers only';
+      case 4:
+        return 'Hearing drivers only';
+      case 5:
+        return 'Drivers comfortable with disabilities';
+      case 6:
+      default:
+        return 'No preference';
+    }
+  };
+
+  const getDriverPreferenceIcon = (preferenceId: number | null) => {
+    switch (preferenceId) {
+      case 1:
+        return 'fa-venus'; // Female symbol
+      case 2:
+        return 'fa-mars'; // Male symbol
+      case 3:
+        return 'fa-hand-paper'; // Sign language
+      case 4:
+        return 'fa-ear-listen'; // Hearing
+      case 5:
+        return 'fa-wheelchair'; // Accessibility
+      case 6:
+      default:
+        return 'fa-user-check'; // General/any driver
+    }
+  };
+
   useEffect(() => {
     if (ride?.status === 'completed' && !ride.customerRating) {
       setShowRating(true);
@@ -513,6 +549,15 @@ export default function RideTracking() {
                 <span>{ride.duration_minutes} minutes</span>
               </div>
             )}
+            <div className="flex justify-between items-start gap-2">
+              <div className="flex items-center flex-shrink-0">
+                <i className={`fas ${getDriverPreferenceIcon(ride.person_preference_id)} mr-2 text-yah-gold`}></i>
+                <span>Driver Preference</span>
+              </div>
+              <span className="font-medium text-right flex-1 min-w-0">
+                {getDriverPreferenceText(ride.person_preference_id)}
+              </span>
+            </div>
           </CardContent>
         </Card>
 
