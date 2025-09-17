@@ -108,6 +108,8 @@ export const customers = pgTable("customers", {
   totalRides: integer("total_rides"),
   totalPayments: decimal("total_payments"),
   isActive: boolean("is_active").notNull(),
+  gender: text("gender"), // 'male', 'female'
+  disabledType: text("disabled_type"), // 'hearing', 'deaf', 'blind', 'disabled', 'none'
 });
 
 // OTP verification table
@@ -165,7 +167,22 @@ export const drivers = pgTable("drivers", {
   rapydBeneficiaryId: text("rapyd_beneficiary_id"),
   bankAccountVerified: boolean("bank_account_verified").default(false),
   payoutMethod: text("payout_method"), // "bank_transfer" or "card"
-  lastPayoutAt: timestamp("last_payout_at")
+  lastPayoutAt: timestamp("last_payout_at"),
+  gender: text("gender"), // 'male', 'female'
+  disabledType: text("disabled_type"), // 'hearing', 'deaf', 'blind', 'disabled', 'none'
+});
+
+// Ride categories table
+export const rideCategories = pgTable("ride_categories", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  category_name: varchar("category_name").notNull(),
+  scope: varchar("scope").notNull(),
+  driver_rate_per_mile: decimal("driver_rate_per_mile", { precision: 10, scale: 2 }),
+  min_tip: decimal("min_tip", { precision: 10, scale: 2 }),
+  max_tip: decimal("max_tip", { precision: 10, scale: 2 }),
+  per_person_fee: decimal("per_person_fee", { precision: 10, scale: 2 }),
+  per_pet_fee: decimal("per_pet_fee", { precision: 10, scale: 2 }),
 });
 
 // Ride types table
@@ -174,6 +191,7 @@ export const rideTypes = pgTable("ride_types", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   title: text("title").notNull(),
   description: text("description"),
+  categoryId: uuid("category_id").references(() => rideCategories.id, { onDelete: "cascade", onUpdate: "cascade" }),
   pricePerMin: decimal("price_per_min", { precision: 10, scale: 2 }),
   driverPerMile: decimal("driver_per_mile", { precision: 10, scale: 2 }).notNull(),
   name: text("name"),
@@ -202,20 +220,24 @@ export const rides = pgTable("rides", {
   pickup: text("pickup").notNull(),
   dropoff: text("dropoff").notNull(),
   ride_type: text("ride_type").notNull(),
-  status: text("status").notNull(), // pending, accepted, in_progress, completed, cancelled
-  distance_miles: doublePrecision("distance_miles"),
-  duration_minutes: doublePrecision("duration_minutes"),
+  status: text("status").notNull().default("pending"), // pending, accepted, in_progress, completed, cancelled
+  distance_miles: doublePrecision("distance_miles").notNull().default(0),
+  duration_minutes: doublePrecision("duration_minutes").notNull().default(0),
   started_at: timestamp("started_at"),
   completed_at: timestamp("completed_at"),
   accepted_at: timestamp("accepted_at"),
   cancelled_at: timestamp("cancelled_at"),
-  rider_count: smallint("rider_count"),
-  pet_count: smallint("pet_count"),
-  open_door_requested: boolean("open_door_requested"),
-  tip_amount: decimal("tip_amount"),
-  total_fare: decimal("total_fare"),
+  tip_amount: decimal("tip_amount").notNull().default("0"),
+  rider_count: smallint("rider_count").notNull().default(1),
+  pet_count: smallint("pet_count").notNull().default(0),
+  open_door_requested: boolean("open_door_requested").notNull().default(false),
+  total_fare: doublePrecision("total_fare").default(0),
+  cancellation_reason: varchar("cancellation_reason"),
+  person_preference_id: integer("person_preference_id").default(6).references(() => personPreferences.id, { onDelete: "cascade", onUpdate: "cascade" }),
   customer_rating: smallint("customer_rating"), // 1 = thumbs down, 2 = thumbs up
   customer_rating_emoji: text("customer_rating_emoji"),
+  ride_type_id: uuid("ride_type_id").references(() => rideTypes.id, { onDelete: "set null", onUpdate: "cascade" }),
+  ride_scope: varchar("ride_scope").notNull().default('In-City'),
 });
 
 // YahChat sessions table
@@ -361,6 +383,15 @@ export const savedLocations = pgTable("saved_locations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Person preferences table for driver rider group preferences
+export const personPreferences = pgTable("person_preferences", {
+  id: bigint("id", { mode: "bigint" }).primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: false }).notNull().defaultNow(),
+  name: varchar("name").notNull(), // 'deaf', 'hearing', 'disabled', 'general'
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
 // Insert schemas
 export const insertCustomerSchema = createInsertSchema(customers).omit({
   createdAt: true,
@@ -382,6 +413,9 @@ export const insertRideSchema = createInsertSchema(rides).omit({
   cancelled_at: z.date().optional().nullable(),
   tip_amount: z.string().optional().nullable(),
   open_door_requested: z.boolean().optional().nullable(),
+  person_preference_id: z.number().min(1).max(6).optional(),
+  ride_type_id: z.string().optional(),
+  ride_scope: z.string().optional(),
   total_fare: z.number().optional().nullable(),
 });
 
@@ -414,6 +448,11 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 export const insertDriverReportSchema = createInsertSchema(driverReports).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertRideCategorySchema = createInsertSchema(rideCategories).omit({
+  id: true,
+  created_at: true,
 });
 
 export const insertRideTypeSchema = createInsertSchema(rideTypes).omit({
@@ -457,6 +496,9 @@ export type PaymentMethod = typeof paymentMethods.$inferSelect;
 export type InsertPaymentMethod = z.infer<typeof insertPaymentMethodSchema>;
 
 export type Driver = typeof drivers.$inferSelect;
+
+export type RideCategory = typeof rideCategories.$inferSelect;
+export type InsertRideCategory = z.infer<typeof insertRideCategorySchema>;
 
 export type RideType = typeof rideTypes.$inferSelect;
 export type InsertRideType = z.infer<typeof insertRideTypeSchema>;

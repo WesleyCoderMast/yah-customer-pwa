@@ -66,6 +66,42 @@ export default function RideCard({ ride, isActive }: RideCardProps) {
     };
   };
 
+  const getDriverPreferenceText = (preferenceId: number | null) => {
+    switch (preferenceId) {
+      case 1:
+        return 'Female drivers only';
+      case 2:
+        return 'Male drivers only';
+      case 3:
+        return 'Deaf or hard-of-hearing drivers only';
+      case 4:
+        return 'Hearing drivers only';
+      case 5:
+        return 'Drivers comfortable with disabilities';
+      case 6:
+      default:
+        return 'No preference';
+    }
+  };
+
+  const getDriverPreferenceIcon = (preferenceId: number | null) => {
+    switch (preferenceId) {
+      case 1:
+        return 'fa-venus'; // Female symbol
+      case 2:
+        return 'fa-mars'; // Male symbol
+      case 3:
+        return 'fa-hand-paper'; // Sign language
+      case 4:
+        return 'fa-ear-listen'; // Hearing
+      case 5:
+        return 'fa-wheelchair'; // Accessibility
+      case 6:
+      default:
+        return 'fa-user-check'; // General/any driver
+    }
+  };
+
   const { date, time } = formatDate(ride.created_at);
 
   return (
@@ -81,10 +117,16 @@ export default function RideCard({ ride, isActive }: RideCardProps) {
             <Badge variant="outline" className="text-sm text-yah-gold border-yah-gold/30 px-3 py-1">
               {ride.ride_type}
             </Badge>
+            {ride.ride_scope && (
+              <Badge variant="outline" className="text-xs text-blue-400 border-blue-400/30 px-2 py-1">
+                <i className="fas fa-map-marker-alt mr-1"></i>
+                {ride.ride_scope}
+              </Badge>
+            )}
           </div>
           <div className="text-right">
             <p className="font-bold text-xl text-yah-gold">
-              ${parseFloat(ride.total_fare || '0').toFixed(2)}
+              ${parseFloat(String(ride.total_fare || '0')).toFixed(2)}
             </p>
             <p className="text-sm text-gray-400">{date}</p>
             <p className="text-sm text-gray-400">{time}</p>
@@ -113,27 +155,39 @@ export default function RideCard({ ride, isActive }: RideCardProps) {
         </div>
 
         {/* Additional Info */}
-        <div className="flex items-center justify-between text-sm text-gray-400 mb-4">
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center">
-              <i className="fas fa-users mr-2 text-base"></i>
-              <span>{ride.rider_count || 1} passenger{(ride.rider_count || 1) > 1 ? 's' : ''}</span>
+        <div className="space-y-3 mb-4">
+          {/* First row - Passengers, Pets, Duration */}
+          <div className="flex items-center justify-between text-sm text-gray-400">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center">
+                <i className="fas fa-users mr-2 text-base"></i>
+                <span>{ride.rider_count || 1} passenger{(ride.rider_count || 1) > 1 ? 's' : ''}</span>
+              </div>
+              {(ride.pet_count || 0) > 0 && (
+                <div className="flex items-center">
+                  <i className="fas fa-paw mr-2 text-base"></i>
+                  <span>{ride.pet_count} pet{(ride.pet_count || 0) > 1 ? 's' : ''}</span>
+                </div>
+              )}
+              {ride.duration_minutes && (
+                <div className="flex items-center">
+                  <i className="fas fa-clock mr-2 text-base"></i>
+                  <span>{Math.round(ride.duration_minutes)} min</span>
+                </div>
+              )}
             </div>
-            {(ride.pet_count || 0) > 0 && (
-              <div className="flex items-center">
-                <i className="fas fa-paw mr-2 text-base"></i>
-                <span>{ride.pet_count} pet{(ride.pet_count || 0) > 1 ? 's' : ''}</span>
-              </div>
-            )}
-            {ride.duration_minutes && (
-              <div className="flex items-center">
-                <i className="fas fa-clock mr-2 text-base"></i>
-                <span>{Math.round(ride.duration_minutes)} min</span>
-              </div>
-            )}
           </div>
-
-          {/* Rating for completed rides - Note: rating fields not in current schema */}
+          
+          {/* Second row - Driver Preference */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center flex-shrink-0">
+              <i className={`fas ${getDriverPreferenceIcon(ride.person_preference_id)} mr-2 text-base text-yah-gold`}></i>
+              <span className="text-sm text-gray-300 font-medium">Driver:</span>
+            </div>
+            <span className="text-sm text-gray-300 text-right flex-1 min-w-0">
+              {getDriverPreferenceText(ride.person_preference_id)}
+            </span>
+          </div>
         </div>
 
         {/* Action Button */}
