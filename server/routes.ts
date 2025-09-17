@@ -9,6 +9,7 @@ import {
   insertRideSchema,
   insertYahMessageSchema,
   insertDriverReportSchema,
+  insertRideCategorySchema,
   insertRideTypeSchema,
   insertCustomerSchema,
   insertRideRequestSchema,
@@ -922,6 +923,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Ride categories routes
+  app.get("/api/ride-categories", async (req, res) => {
+    try {
+      const rideCategories = await storage.getRideCategories();
+      res.json({ rideCategories });
+    } catch (error: any) {
+      console.error("Ride categories fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch ride categories" });
+    }
+  });
+
+  app.get("/api/ride-categories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rideCategory = await storage.getRideCategory(id);
+
+      if (!rideCategory) {
+        return res.status(404).json({ message: "Ride category not found" });
+      }
+
+      res.json({ rideCategory });
+    } catch (error: any) {
+      console.error("Ride category fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch ride category" });
+    }
+  });
+
+  app.post("/api/ride-categories", async (req, res) => {
+    try {
+      const rideCategoryData = insertRideCategorySchema.parse(req.body);
+      const rideCategory = await storage.createRideCategory(rideCategoryData);
+
+      res.json({ rideCategory });
+    } catch (error: any) {
+      console.error("Ride category creation error:", error);
+      res
+        .status(400)
+        .json({ message: error.message || "Failed to create ride category" });
+    }
+  });
+
+  app.patch("/api/ride-categories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+
+      const rideCategory = await storage.updateRideCategory(id, updates);
+      res.json({ rideCategory });
+    } catch (error: any) {
+      console.error("Ride category update error:", error);
+      res
+        .status(400)
+        .json({ message: error.message || "Failed to update ride category" });
+    }
+  });
+
+  app.delete("/api/ride-categories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteRideCategory(id);
+      res.json({ message: "Ride category deleted successfully" });
+    } catch (error: any) {
+      console.error("Ride category deletion error:", error);
+      res
+        .status(400)
+        .json({ message: error.message || "Failed to delete ride category" });
+    }
+  });
+
   // Ride types routes
   app.get("/api/ride-types", async (req, res) => {
     try {
@@ -986,38 +1056,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Filter ride types by category and tripArea
   app.get("/api/ride-types/by-category", async (req, res) => {
     try {
-      const { category, tripArea } = req.query as { category?: string; tripArea?: 'in-city' | 'out-of-city' };
-      const rideTypes = await storage.getRideTypes();
-      const areaOf = (title: string) => title.toLowerCase().includes('travel') ? 'out-of-city' : 'in-city';
-      const catOf = (title: string) => {
-        const t = title.toLowerCase();
-        if (t.includes('travel')) {
-          if (t.includes('individual')) return 'travel-individual';
-          if (t.includes('group') || t.includes('family')) return 'travel-group';
-          if (t.includes('business') || t.includes('medical')) return 'travel-purpose';
-          if (t.includes('engagement') || t.includes('union') || t.includes('marriage') || t.includes('honeymoon')) return 'travel-relationship';
-          if (t.includes('army') || t.includes('military') || t.includes('security')) return 'travel-protected';
-          if (t.includes('royal') || t.includes('celebrity') || t.includes('elite')) return 'travel-luxury';
-          if (t.includes('quiet') || t.includes('silent')) return 'travel-quiet';
-          return 'travel-basic';
-        }
-        if (t.includes('youth') || t.includes('man') || t.includes('woman') || t.includes('senior') || t.includes('single') || t.includes('solo')) return 'individual';
-        if (t.includes('couple') || t.includes('engagement') || t.includes('union') || t.includes('dating') || t.includes('marriage') || t.includes('wedding') || t.includes('match') || t.includes('pure')) return 'relationship';
-        if (t.includes('birthday') || t.includes('valentine') || t.includes('party') || t.includes('invitation')) return 'event';
-        if (t.includes('army') || t.includes('military') || t.includes('security')) return 'protected';
-        if (t.includes('royal') || t.includes('celebrity') || t.includes('elite')) return 'luxury';
-        if (t.includes('business') || t.includes('medical')) return 'service';
-        return 'regular';
-      };
+      const { categoryId, tripArea } = req.query as { categoryId?: string; tripArea?: 'in-city' | 'out-of-city' };
+      
+      console.log('Fetching ride types for categoryId:', categoryId, 'tripArea:', tripArea);
+      
+      if (!categoryId) {
+        return res.status(400).json({ message: "Category ID is required" });
+      }
 
-      const filtered = (rideTypes as any[]).filter(rt => {
-        const title = String(rt.title || rt.name || '');
-        const a = areaOf(title);
-        const c = catOf(title);
-        if (tripArea && a !== tripArea) return false;
-        if (category && c !== category) return false;
-        return true;
-      });
+      // Get ride types filtered by category ID
+      const rideTypes = await storage.getRideTypesByCategoryId(categoryId);
+      console.log('Found ride types:', rideTypes.length, 'for categoryId:', categoryId);
+      
+      // Filter by trip area if specified
+      let filtered = rideTypes;
+      if (tripArea) {
+        // Get the category to check its scope
+        const category = await storage.getRideCategory(categoryId);
+        if (category) {
+          const isInCity = category.scope === 'In-City' || category.scope === 'in-city';
+          const isOutOfCity = category.scope === 'Out-of-City / Out-of-State / Travel' || 
+                             category.scope === 'out-of-city' || 
+                             category.scope === 'travel';
+          
+          if ((tripArea === 'in-city' && !isInCity) || (tripArea === 'out-of-city' && !isOutOfCity)) {
+            filtered = []; // No matching ride types for this trip area
+          }
+        }
+      }
 
       res.json({ rideTypes: filtered });
     } catch (error: any) {

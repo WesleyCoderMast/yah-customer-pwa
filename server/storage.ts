@@ -2,6 +2,7 @@ import {
   customers,
   paymentMethods,
   drivers,
+  rideCategories,
   rideTypes,
   rides,
   payments,
@@ -18,6 +19,8 @@ import {
   type PaymentMethod,
   type InsertPaymentMethod,
   type Driver,
+  type RideCategory,
+  type InsertRideCategory,
   type RideType,
   type InsertRideType,
   type Ride,
@@ -61,10 +64,18 @@ export interface IStorage {
   getAvailableDrivers(lat: number, lng: number, rideType: string): Promise<Driver[]>;
   getDriver(id: string): Promise<Driver | undefined>;
   
+  // Ride category operations
+  getRideCategories(): Promise<RideCategory[]>;
+  getRideCategory(id: string): Promise<RideCategory | undefined>;
+  createRideCategory(rideCategory: InsertRideCategory): Promise<RideCategory>;
+  updateRideCategory(id: string, updates: Partial<RideCategory>): Promise<RideCategory>;
+  deleteRideCategory(id: string): Promise<void>;
+  
   // Ride type operations
   getRideTypes(): Promise<RideType[]>;
   getRideType(id: string): Promise<RideType | undefined>;
   getRideTypesByCategory(category: string): Promise<RideType[]>;
+  getRideTypesByCategoryId(categoryId: string): Promise<RideType[]>;
   createRideType(rideType: InsertRideType): Promise<RideType>;
   updateRideType(id: string, updates: Partial<RideType>): Promise<RideType>;
   
@@ -737,6 +748,90 @@ export class DatabaseStorage implements IStorage {
       .eq('id', id);
   }
 
+  // Ride category operations
+  async getRideCategories(): Promise<RideCategory[]> {
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
+    }
+    const { data, error } = await supabase
+      .from('ride_categories')
+      .select('*')
+      .order('category_name', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching ride categories:', error);
+      return [];
+    }
+    return data || [];
+  }
+
+  async getRideCategory(id: string): Promise<RideCategory | undefined> {
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
+    }
+    const { data, error } = await supabase
+      .from('ride_categories')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error fetching ride category:', error);
+      return undefined;
+    }
+    return data;
+  }
+
+  async createRideCategory(rideCategoryData: InsertRideCategory): Promise<RideCategory> {
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
+    }
+    const { data, error } = await supabase
+      .from('ride_categories')
+      .insert(rideCategoryData)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Ride category creation error:', error);
+      throw new Error(`Failed to create ride category: ${error.message}`);
+    }
+    return data;
+  }
+
+  async updateRideCategory(id: string, updates: Partial<RideCategory>): Promise<RideCategory> {
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
+    }
+    const { data, error } = await supabase
+      .from('ride_categories')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Ride category update error:', error);
+      throw new Error(`Failed to update ride category: ${error.message}`);
+    }
+    return data;
+  }
+
+  async deleteRideCategory(id: string): Promise<void> {
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
+    }
+    const { error } = await supabase
+      .from('ride_categories')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error('Ride category deletion error:', error);
+      throw new Error(`Failed to delete ride category: ${error.message}`);
+    }
+  }
+
   // Ride type operations
   async getRideTypes(): Promise<RideType[]> {
     if (!supabase) {
@@ -788,6 +883,40 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
     return data || [];
+  }
+
+  async getRideTypesByCategoryId(categoryId: string): Promise<RideType[]> {
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
+    }
+    
+    console.log('Querying ride_types for categoryId:', categoryId);
+    
+    // Now query by category ID
+    const { data, error } = await supabase
+      .from('ride_types')
+      .select('*')
+      .eq('category_id', categoryId)
+      .order('title', { ascending: true });
+    
+    console.log('Raw query result - data:', data?.length || 0, 'error:', error);
+    
+    if (error) {
+      console.error('Error fetching ride types by category ID:', error);
+      return [];
+    }
+    
+    // Filter active ones in JavaScript if needed
+    const activeRideTypes = data?.filter((rt: any) => rt.active === true) || [];
+    console.log('Active ride types:', activeRideTypes.length);
+    
+    // If no active ride types found, return all ride types for this category
+    if (activeRideTypes.length === 0 && data && data.length > 0) {
+      console.log('No active ride types found, returning all ride types for category');
+      return data;
+    }
+    
+    return activeRideTypes;
   }
 
   async createRideType(rideTypeData: InsertRideType): Promise<RideType> {

@@ -171,15 +171,18 @@ export const drivers = pgTable("drivers", {
   gender: text("gender"), // 'male', 'female'
   disabledType: text("disabled_type"), // 'hearing', 'deaf', 'blind', 'disabled', 'none'
 });
+
 // Ride categories table
 export const rideCategories = pgTable("ride_categories", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  categoryName: text("category_name").notNull(),
-  scope: text("scope").notNull(), // e.g., "In-City", "Out-of-City / Out-of-State / Travel"
-  driverRatePerMile: decimal("driver_rate_per_mile", { precision: 10, scale: 2 }).notNull(),
-  minRate: decimal("min_rate", { precision: 10, scale: 2 }),
-  maxRate: decimal("max_rate", { precision: 10, scale: 2 }),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  category_name: varchar("category_name").notNull(),
+  scope: varchar("scope").notNull(),
+  driver_rate_per_mile: decimal("driver_rate_per_mile", { precision: 10, scale: 2 }),
+  min_tip: decimal("min_tip", { precision: 10, scale: 2 }),
+  max_tip: decimal("max_tip", { precision: 10, scale: 2 }),
+  per_person_fee: decimal("per_person_fee", { precision: 10, scale: 2 }),
+  per_pet_fee: decimal("per_pet_fee", { precision: 10, scale: 2 }),
 });
 
 // Ride types table
@@ -234,6 +237,7 @@ export const rides = pgTable("rides", {
   customer_rating: smallint("customer_rating"), // 1 = thumbs down, 2 = thumbs up
   customer_rating_emoji: text("customer_rating_emoji"),
   ride_type_id: uuid("ride_type_id").references(() => rideTypes.id, { onDelete: "set null", onUpdate: "cascade" }),
+  ride_scope: varchar("ride_scope").notNull().default('In-City'),
 });
 
 // YahChat sessions table
@@ -411,6 +415,7 @@ export const insertRideSchema = createInsertSchema(rides).omit({
   open_door_requested: z.boolean().optional().nullable(),
   person_preference_id: z.number().min(1).max(6).optional(),
   ride_type_id: z.string().optional(),
+  ride_scope: z.string().optional(),
   total_fare: z.number().optional().nullable(),
 });
 
@@ -443,6 +448,11 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 export const insertDriverReportSchema = createInsertSchema(driverReports).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertRideCategorySchema = createInsertSchema(rideCategories).omit({
+  id: true,
+  created_at: true,
 });
 
 export const insertRideTypeSchema = createInsertSchema(rideTypes).omit({
@@ -486,6 +496,9 @@ export type PaymentMethod = typeof paymentMethods.$inferSelect;
 export type InsertPaymentMethod = z.infer<typeof insertPaymentMethodSchema>;
 
 export type Driver = typeof drivers.$inferSelect;
+
+export type RideCategory = typeof rideCategories.$inferSelect;
+export type InsertRideCategory = z.infer<typeof insertRideCategorySchema>;
 
 export type RideType = typeof rideTypes.$inferSelect;
 export type InsertRideType = z.infer<typeof insertRideTypeSchema>;

@@ -117,6 +117,12 @@ export default function RideCard({ ride, isActive }: RideCardProps) {
             <Badge variant="outline" className="text-sm text-yah-gold border-yah-gold/30 px-3 py-1">
               {ride.ride_type}
             </Badge>
+            {ride.ride_scope && (
+              <Badge variant="outline" className="text-xs text-blue-400 border-blue-400/30 px-2 py-1">
+                <i className="fas fa-map-marker-alt mr-1"></i>
+                {ride.ride_scope}
+              </Badge>
+            )}
           </div>
           <div className="text-right">
             <p className="font-bold text-xl text-yah-gold">

@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { RideType } from "@shared/schema";
+import type { RideType, RideCategory } from "@shared/schema";
 import { VITE_API_BASE_URL } from "@/lib/config";
 
 interface RideTypeSelectorProps {
@@ -12,6 +12,7 @@ interface RideTypeSelectorProps {
   onRideTypeChange: (rideType: string, rideTypeId: string) => void;
   tripArea: 'in-city' | 'out-of-city';
   selectedCategory?: string; // Selected category from step 2
+  categories?: RideCategory[]; // Real categories from database
   className?: string;
 }
 
@@ -20,29 +21,24 @@ const getTripAreaFromRideType = (title: string): 'in-city' | 'out-of-city' => {
   return title.toLowerCase().includes('travel') ? 'out-of-city' : 'in-city';
 };
 
-const getInCityCategories = () => [
-  { id: 'regular', name: 'Regular Rides', icon: 'fa-car-side', description: 'Standard rides' },
-  { id: 'individual', name: 'Individual Rides', icon: 'fa-user', description: 'Personal service' },
-  { id: 'relationship', name: 'Relationship Rides', icon: 'fa-heart', description: 'Special connections' },
-  { id: 'event', name: 'Event Rides', icon: 'fa-star', description: 'Special occasions' },
-  { id: 'protected', name: 'Protected Rides', icon: 'fa-shield-alt', description: 'Secure service' },
-  { id: 'luxury', name: 'Luxury Rides', icon: 'fa-crown', description: 'Premium experience' },
-  { id: 'service', name: 'Service Rides', icon: 'fa-briefcase', description: 'Professional needs' },
-];
 
-const getOutOfCityCategories = () => [
-  { id: 'travel-basic', name: 'Travel – Basic', icon: 'fa-plane', description: 'Standard travel' },
-  { id: 'travel-individual', name: 'Travel – Individual', icon: 'fa-user-friends', description: 'Personal travel' },
-  { id: 'travel-group', name: 'Travel – Group', icon: 'fa-users', description: 'Group travel' },
-  { id: 'travel-purpose', name: 'Travel – Purpose', icon: 'fa-briefcase', description: 'Business/medical' },
-  { id: 'travel-relationship', name: 'Travel – Relationship', icon: 'fa-heart', description: 'Special occasions' },
-  { id: 'travel-protected', name: 'Travel – Protected', icon: 'fa-shield-alt', description: 'Secure travel' },
-  { id: 'travel-luxury', name: 'Travel – Luxury', icon: 'fa-crown', description: 'Premium travel' },
-  { id: 'travel-quiet', name: 'Travel – Quiet', icon: 'fa-volume-mute', description: 'Silent journey' },
-];
+export default function RideTypeSelector({ selectedRideType, onRideTypeChange, tripArea, selectedCategory, categories, className }: RideTypeSelectorProps) {
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(selectedCategory || null);
 
-export default function RideTypeSelector({ selectedRideType, onRideTypeChange, tripArea, selectedCategory, className }: RideTypeSelectorProps) {
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(selectedCategory || (tripArea === 'in-city' ? 'regular' : 'travel-basic'));
+  // Helper function to get icon for ride type
+  const getRideTypeIcon = (title: string) => {
+    const t = title.toLowerCase();
+    if (t.includes('luxury') || t.includes('premium') || t.includes('vip')) return 'fa-crown';
+    if (t.includes('family') || t.includes('group')) return 'fa-users';
+    if (t.includes('business') || t.includes('corporate')) return 'fa-briefcase';
+    if (t.includes('medical') || t.includes('health')) return 'fa-ambulance';
+    if (t.includes('wedding') || t.includes('marriage')) return 'fa-heart';
+    if (t.includes('airport') || t.includes('travel')) return 'fa-plane';
+    if (t.includes('event') || t.includes('party')) return 'fa-calendar';
+    if (t.includes('pet') || t.includes('animal')) return 'fa-paw';
+    if (t.includes('wheelchair') || t.includes('accessibility')) return 'fa-wheelchair';
+    return 'fa-car'; // Default icon
+  };
   
   // Auto-expand the selected category
   useEffect(() => {
@@ -51,13 +47,19 @@ export default function RideTypeSelector({ selectedRideType, onRideTypeChange, t
     }
   }, [selectedCategory]);
 
-  // Fetch ride types from database
+  // Fetch ride types from database based on selected category
   const { data: rideTypesResponse, isLoading, error } = useQuery({
-    queryKey: ['/api/ride-types'],
-    queryFn: () => fetch(`${VITE_API_BASE_URL}/api/ride-types`).then(res => res.json()),
+    queryKey: ['/api/ride-types/by-category', selectedCategory, tripArea],
+    queryFn: () => {
+      if (!selectedCategory) return { rideTypes: [] };
+      console.log('Fetching ride types for categoryId:', selectedCategory, 'tripArea:', tripArea);
+      return fetch(`${VITE_API_BASE_URL}/api/ride-types/by-category?categoryId=${selectedCategory}&tripArea=${tripArea}`).then(res => res.json());
+    },
+    enabled: !!selectedCategory, // Only fetch when a category is selected
   });
 
   const rideTypes = rideTypesResponse?.rideTypes || [];
+  console.log('Received ride types:', rideTypes.length, 'for categoryId:', selectedCategory);
 
   // Filter ride types by trip area
   const filteredRideTypes = rideTypes.filter((rideType: RideType) => 
@@ -95,58 +97,32 @@ export default function RideTypeSelector({ selectedRideType, onRideTypeChange, t
   }, {} as Record<string, RideType[]>);
   
   // Filter categories based on selected category from step 2
-  const allCategories = tripArea === 'in-city' ? getInCityCategories() : getOutOfCityCategories();
+  const allCategories = categories ? categories.filter(cat => {
+    if (tripArea === 'in-city') {
+      return cat.scope === 'In-City' || cat.scope === 'in-city';
+    } else {
+      return cat.scope === 'Out-of-City / Out-of-State / Travel' || 
+             cat.scope === 'out-of-city' || 
+             cat.scope === 'travel';
+    }
+  }) : [];
+  
   const availableCategories = selectedCategory 
     ? allCategories.filter(cat => cat.id === selectedCategory)
     : allCategories;
 
-  const categoryLabels = {
-    regular: 'Regular Rides',
-    individual: 'Individual Rides',
-    relationship: 'Relationship Rides',
-    event: 'Event Rides',
-    protected: 'Protected Rides',
-    luxury: 'Luxury Rides',
-    service: 'Service Rides',
-    'travel-basic': 'Travel – Basic',
-    'travel-individual': 'Travel – Individual',
-    'travel-group': 'Travel – Group',
-    'travel-purpose': 'Travel – Purpose',
-    'travel-relationship': 'Travel – Relationship',
-    'travel-protected': 'Travel – Protected',
-    'travel-luxury': 'Travel – Luxury',
-    'travel-quiet': 'Travel – Quiet'
-  };
-
-  const categoryIcons = {
-    regular: 'fa-car-side',
-    individual: 'fa-user',
-    relationship: 'fa-heart',
-    event: 'fa-star',
-    protected: 'fa-shield-alt',
-    luxury: 'fa-crown',
-    service: 'fa-briefcase',
-    'travel-basic': 'fa-plane',
-    'travel-individual': 'fa-user-friends',
-    'travel-group': 'fa-users',
-    'travel-purpose': 'fa-briefcase',
-    'travel-relationship': 'fa-heart',
-    'travel-protected': 'fa-shield-alt',
-    'travel-luxury': 'fa-crown',
-    'travel-quiet': 'fa-volume-mute'
-  };
 
   // Show loading state
   if (isLoading) {
     return (
       <div className={cn("space-y-4", className)}>
-        <h3 className="text-lg font-semibold mb-4 flex items-center">
-          <i className="fas fa-car text-yah-gold mr-2"></i>
+        <h3 className="text-xl font-bold mb-4 flex items-center text-white">
+          <i className="fas fa-car text-yah-gold mr-3 text-lg"></i>
           {tripArea === 'in-city' ? 'Choose a Ride Category' : 'Choose a Travel Category'}
         </h3>
-        <div className="text-center py-8">
-          <i className="fas fa-spinner fa-spin text-yah-gold text-2xl mb-4"></i>
-          <p className="text-gray-300">Loading ride types...</p>
+        <div className="text-center py-12">
+          <i className="fas fa-spinner fa-spin text-yah-gold text-3xl mb-4"></i>
+          <p className="text-gray-400 text-lg">Loading ride types...</p>
         </div>
       </div>
     );
@@ -156,14 +132,124 @@ export default function RideTypeSelector({ selectedRideType, onRideTypeChange, t
   if (error) {
     return (
       <div className={cn("space-y-4", className)}>
-        <h3 className="text-lg font-semibold mb-4 flex items-center">
-          <i className="fas fa-car text-yah-gold mr-2"></i>
+        <h3 className="text-xl font-bold mb-4 flex items-center text-white">
+          <i className="fas fa-car text-yah-gold mr-3 text-lg"></i>
           {tripArea === 'in-city' ? 'Choose a Ride Category' : 'Choose a Travel Category'}
         </h3>
-        <div className="text-center py-8">
-          <i className="fas fa-exclamation-triangle text-red-500 text-2xl mb-4"></i>
-          <p className="text-gray-300">Failed to load ride types. Please try again.</p>
+        <div className="text-center py-12">
+          <i className="fas fa-exclamation-triangle text-red-400 text-3xl mb-4"></i>
+          <p className="text-gray-400 text-lg">Failed to load ride types. Please try again.</p>
         </div>
+      </div>
+    );
+  }
+
+  // Show message if no categories are available
+  if (!categories || categories.length === 0) {
+    return (
+      <div className={cn("space-y-4", className)}>
+        <h3 className="text-xl font-bold mb-4 flex items-center text-white">
+          <i className="fas fa-car text-yah-gold mr-3 text-lg"></i>
+          {tripArea === 'in-city' ? 'Choose a Ride Category' : 'Choose a Travel Category'}
+        </h3>
+        <div className="text-center py-12">
+          <i className="fas fa-info-circle text-blue-400 text-3xl mb-4"></i>
+          <p className="text-gray-400 text-lg">No categories available for this trip area.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If a category is selected, show ride types for that category
+  if (selectedCategory) {
+    // Map ride types to display format
+    const rideTypeOptions = filteredRideTypes.map((rideType: RideType) => ({
+      id: rideType.id.toString(),
+      title: rideType.title,
+      description: rideType.description || '',
+      icon: getRideTypeIcon(rideType.title),
+      price: rideType.pricePerMin ? `$${rideType.pricePerMin}/min` : 'Price on request',
+      features: [
+        `Max ${rideType.maxPassengers} passengers`,
+        rideType.requiresPet ? 'Pet-friendly' : 'No pets',
+        rideType.isFamilyFriendly ? 'Family-friendly' : 'Adults only',
+        rideType.vipOnly ? 'VIP only' : 'Available to all',
+      ].filter(Boolean),
+    }));
+
+    return (
+      <div className={cn("space-y-4", className)}>
+        <h3 className="text-xl font-bold mb-4 flex items-center text-white">
+          <i className="fas fa-car text-yah-gold mr-3 text-lg"></i>
+          Choose a Ride Type
+        </h3>
+
+        {/* Description */}
+        <div className="text-sm text-gray-400 mb-6 p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl">
+          <p>Choose the specific service that meets your needs.</p>
+        </div>
+
+        {/* Show message if no ride types available */}
+        {rideTypeOptions.length === 0 ? (
+          <div className="text-center py-12">
+            <i className="fas fa-info-circle text-blue-400 text-3xl mb-4"></i>
+            <p className="text-gray-400 text-lg">No ride types available for this category.</p>
+          </div>
+        ) : (
+          /* Ride Type Options */
+          <div className="space-y-4">
+            {rideTypeOptions.map((option: any) => (
+              <Card 
+                key={option.id} 
+                className={cn(
+                  "transition-all duration-300 cursor-pointer group",
+                  selectedRideType === option.title 
+                    ? "bg-gradient-to-r from-yah-gold/20 to-yah-gold/10 border-yah-gold shadow-lg shadow-yah-gold/20" 
+                    : "bg-slate-800/80 border-slate-700 hover:bg-slate-700/80 hover:border-slate-600 hover:shadow-lg hover:shadow-slate-900/20"
+                )}
+              >
+                <CardContent className="p-5">
+                  <button
+                    onClick={() => onRideTypeChange(option.title, option.id)}
+                    className="w-full text-left"
+                    data-testid={`ride-type-${option.id}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center flex-1">
+                        <div className={cn(
+                          "w-12 h-12 rounded-xl flex items-center justify-center mr-4 transition-colors",
+                          selectedRideType === option.title 
+                            ? "bg-yah-gold text-white" 
+                            : "bg-slate-700 text-yah-gold group-hover:bg-yah-gold/20"
+                        )}>
+                          <i className={`fas ${option.icon} text-lg`}></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className={cn(
+                            "font-bold text-lg mb-1 transition-colors",
+                            selectedRideType === option.title 
+                              ? "text-white" 
+                              : "text-gray-200 group-hover:text-white"
+                          )}>
+                            {option.title}
+                          </h4>
+                          <p className={cn(
+                            "text-sm transition-colors",
+                            selectedRideType === option.title 
+                              ? "text-gray-300" 
+                              : "text-gray-400 group-hover:text-gray-300"
+                          )}>
+                            {option.description}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -171,7 +257,7 @@ export default function RideTypeSelector({ selectedRideType, onRideTypeChange, t
   const getHeaderText = () => {
     if (selectedCategory) {
       const categoryInfo = availableCategories.find(cat => cat.id === selectedCategory);
-      return categoryInfo ? categoryInfo.name : 'Choose a Ride Type';
+      return categoryInfo ? categoryInfo.category_name : 'Choose a Ride Type';
     }
     return tripArea === 'in-city' ? 'Choose a Ride Category' : 'Choose a Travel Category';
   };
@@ -215,8 +301,8 @@ export default function RideTypeSelector({ selectedRideType, onRideTypeChange, t
                   data-testid={`category-toggle-${category.id}`}
                 >
                   <h4 className="font-semibold text-yah-gold flex items-center">
-                    <i className={`fas ${category.icon} mr-2`}></i>
-                    {category.name}
+                    <i className="fas fa-car mr-2"></i>
+                    {category.category_name}
                     <Badge variant="secondary" className="ml-2 text-xs">
                       {rides.length}
                     </Badge>

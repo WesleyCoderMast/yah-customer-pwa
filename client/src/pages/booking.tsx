@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,8 @@ import RideTypeSelector from "@/components/ride-type-selector";
 import RouteMap from "@/components/route-map";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-import { VITE_SUPABASE_ANON_KEY } from "@/lib/config";
+import { VITE_SUPABASE_ANON_KEY, VITE_API_BASE_URL } from "@/lib/config";
+import type { RideCategory } from "@shared/schema";
 
 type BookingStep = 'trip-area' | 'category' | 'ride-type' | 'passengers' | 'open-door' | 'driver-preferences' | 'locations' | 'confirmation';
 
@@ -22,6 +23,7 @@ interface BookingData {
   destinationCity?: string;
   destinationState?: string;
   category: string;
+  categoryId: string; // References ride_categories table
   rideType: string;
   rideTypeId: string; // References ride_types table
   passengerCount: number;
@@ -383,6 +385,7 @@ export default function Booking() {
   const [bookingData, setBookingData] = useState<BookingData>({
     tripArea: 'in-city',
     category: '',
+    categoryId: '',
     rideType: '',
     rideTypeId: '',
     passengerCount: 1,
@@ -399,6 +402,35 @@ export default function Booking() {
     estimatedDistance: 5.2,
     scheduledFor: null,
   });
+
+  // Fetch ride categories from database
+  const { data: categoriesData, isLoading: isLoadingCategories } = useQuery({
+    queryKey: ['/api/ride-categories'],
+    queryFn: async () => {
+      const response = await fetch(`${VITE_API_BASE_URL}/api/ride-categories`);
+      if (!response.ok) throw new Error('Failed to fetch ride categories');
+      const result = await response.json();
+      return result.rideCategories;
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  // Helper functions to filter categories by scope
+  const getInCityCategories = (): RideCategory[] => {
+    if (!categoriesData) return [];
+    return categoriesData.filter((category: RideCategory) => 
+      category.scope === 'In-City' || category.scope === 'in-city'
+    );
+  };
+
+  const getOutOfCityCategories = (): RideCategory[] => {
+    if (!categoriesData) return [];
+    return categoriesData.filter((category: RideCategory) => 
+      category.scope === 'Out-of-City / Out-of-State / Travel' || 
+      category.scope === 'out-of-city' ||
+      category.scope === 'travel'
+    );
+  };
 
   // Vehicle capacity (seats per vehicle type)
   const VEHICLE_CAPACITY = 4; // Standard vehicle capacity
@@ -690,6 +722,7 @@ export default function Booking() {
       dropoff: bookingData.dropoffLocation || '',
       ride_type: bookingData.rideType || '',
       ride_type_id: bookingData.rideTypeId || '',
+      ride_scope: bookingData.tripArea === 'in-city' ? 'In-City' : 'Out-of-City / Out-of-State / Travel',
       status: 'pending',
       distance_miles: bookingData.estimatedDistance || 5.0,
       duration_minutes: bookingData.estimatedTime || 15.0,
@@ -702,7 +735,9 @@ export default function Booking() {
 
     // Debug logging
     console.log('Booking data personPreferenceId:', bookingData.personPreferenceId);
+    console.log('Booking data tripArea:', bookingData.tripArea);
     console.log('Ride data person_preference_id:', rideData.person_preference_id);
+    console.log('Ride data ride_scope:', rideData.ride_scope);
     console.log('Full ride data:', rideData);
 
     bookRideMutation.mutate(rideData);
@@ -728,7 +763,7 @@ export default function Booking() {
       case 'trip-area':
         return !!bookingData.tripArea;
       case 'category':
-        return !!bookingData.category;
+        return !!bookingData.categoryId;
       case 'ride-type':
         return !!bookingData.rideType;
       case 'passengers':
@@ -837,7 +872,7 @@ export default function Booking() {
             
             <div className="grid grid-cols-1 gap-4">
               <button
-                onClick={() => setBookingData(prev => ({ ...prev, tripArea: 'in-city', category: '', rideType: '' }))}
+                onClick={() => setBookingData(prev => ({ ...prev, tripArea: 'in-city', category: '', categoryId: '', rideType: '', rideTypeId: '' }))}
                 className={cn(
                   "p-4 rounded-xl text-left transition-all duration-300 border-2",
                   bookingData.tripArea === 'in-city'
@@ -856,7 +891,7 @@ export default function Booking() {
               </button>
               
               <button
-                onClick={() => setBookingData(prev => ({ ...prev, tripArea: 'out-of-city', category: '', rideType: '' }))}
+                onClick={() => setBookingData(prev => ({ ...prev, tripArea: 'out-of-city', category: '', categoryId: '', rideType: '', rideTypeId: '' }))}
                 className={cn(
                   "p-4 rounded-xl text-left transition-all duration-300 border-2",
                   bookingData.tripArea === 'out-of-city'
@@ -903,6 +938,23 @@ export default function Booking() {
         );
         
       case 'category':
+        if (isLoadingCategories) {
+          return (
+            <div className="space-y-6">
+              <div className="text-center mb-6">
+                <h2 className="text-2xl font-bold text-primary mb-2">Loading Categories...</h2>
+                <p className="text-muted-foreground">Please wait while we load available categories.</p>
+              </div>
+              <div className="text-center py-8">
+                <i className="fas fa-spinner fa-spin text-primary text-2xl mb-4"></i>
+                <p className="text-muted-foreground">Loading categories...</p>
+              </div>
+            </div>
+          );
+        }
+
+        const categories = bookingData.tripArea === 'in-city' ? getInCityCategories() : getOutOfCityCategories();
+        
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
@@ -913,40 +965,28 @@ export default function Booking() {
             </div>
             
             <div className="grid grid-cols-1 gap-3">
-              {(bookingData.tripArea === 'in-city' ? [
-                { id: 'regular', name: 'Regular Rides', icon: 'fa-car-side', description: 'Standard rides' },
-                { id: 'individual', name: 'Individual Rides', icon: 'fa-user', description: 'Personal service' },
-                { id: 'relationship', name: 'Relationship Rides', icon: 'fa-heart', description: 'Special connections' },
-                { id: 'event', name: 'Event Rides', icon: 'fa-star', description: 'Special occasions' },
-                { id: 'protected', name: 'Protected Rides', icon: 'fa-shield-alt', description: 'Secure service' },
-                { id: 'luxury', name: 'Luxury Rides', icon: 'fa-crown', description: 'Premium experience' },
-                { id: 'service', name: 'Service Rides', icon: 'fa-briefcase', description: 'Professional needs' },
-              ] : [
-                { id: 'travel-basic', name: 'Travel – Basic', icon: 'fa-plane', description: 'Standard travel' },
-                { id: 'travel-individual', name: 'Travel – Individual', icon: 'fa-user-friends', description: 'Personal travel' },
-                { id: 'travel-group', name: 'Travel – Group', icon: 'fa-users', description: 'Group travel' },
-                { id: 'travel-purpose', name: 'Travel – Purpose', icon: 'fa-briefcase', description: 'Business/medical' },
-                { id: 'travel-relationship', name: 'Travel – Relationship', icon: 'fa-heart', description: 'Special occasions' },
-                { id: 'travel-protected', name: 'Travel – Protected', icon: 'fa-shield-alt', description: 'Secure travel' },
-                { id: 'travel-luxury', name: 'Travel – Luxury', icon: 'fa-crown', description: 'Premium travel' },
-                { id: 'travel-quiet', name: 'Travel – Quiet', icon: 'fa-volume-mute', description: 'Silent journey' },
-              ]).map((category) => (
+              {categories.map((category: RideCategory) => (
                 <button
                   key={category.id}
-                  onClick={() => setBookingData(prev => ({ ...prev, category: category.id, rideType: '' }))}
+                  onClick={() => setBookingData(prev => ({ ...prev, category: category.category_name, categoryId: category.id, rideType: '', rideTypeId: '' }))}
                   className={cn(
                     "p-4 rounded-xl text-left transition-all duration-300 border-2",
-                    bookingData.category === category.id
+                    bookingData.categoryId === category.id
                       ? "bg-primary text-primary-foreground border-primary shadow-lg"
                       : "bg-card text-card-foreground border-border hover:border-primary/60"
                   )}
                   data-testid={`category-${category.id}`}
                 >
                   <div className="flex items-center">
-                    <i className={`fas ${category.icon} text-2xl mr-4`}></i>
-                    <div>
-                      <h3 className="text-lg font-bold mb-1">{category.name}</h3>
-                      <p className="text-sm opacity-80">{category.description}</p>
+                    {/* <i className="fas fa-car text-2xl mr-4"></i> */}
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold mb-1">{category.category_name}</h3>
+                      {/* {category.driver_rate_per_mile && (
+                        <p className="text-xs opacity-70">Rate: ${category.driver_rate_per_mile}/mile</p>
+                      )}
+                      {category.min_tip && category.max_tip && (
+                        <p className="text-xs opacity-70">Tips: ${category.min_tip} - ${category.max_tip}</p>
+                      )} */}
                     </div>
                   </div>
                 </button>
@@ -967,7 +1007,8 @@ export default function Booking() {
               selectedRideType={bookingData.rideType}
               onRideTypeChange={(rideType, rideTypeId) => setBookingData(prev => ({ ...prev, rideType, rideTypeId }))}
               tripArea={bookingData.tripArea}
-              selectedCategory={bookingData.category}
+              selectedCategory={bookingData.categoryId}
+              categories={categoriesData}
             />
           </div>
         );

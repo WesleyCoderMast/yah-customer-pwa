@@ -529,6 +529,12 @@ export default function RideTracking() {
               <span>Ride Type</span>
               <span className="font-medium">{ride.ride_type}</span>
             </div>
+            {ride.ride_scope && (
+              <div className="flex justify-between">
+                <span>Scope</span>
+                <span className="font-medium text-blue-400">{ride.ride_scope}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span>Passengers</span>
               <span>{ride.rider_count}</span>
