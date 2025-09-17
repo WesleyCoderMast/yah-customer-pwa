@@ -15,7 +15,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { VITE_SUPABASE_ANON_KEY } from "@/lib/config";
 
-type BookingStep = 'trip-area' | 'category' | 'ride-type' | 'passengers' | 'open-door' | 'locations' | 'confirmation';
+type BookingStep = 'trip-area' | 'category' | 'ride-type' | 'passengers' | 'open-door' | 'driver-preferences' | 'locations' | 'confirmation';
 
 interface BookingData {
   tripArea: 'in-city' | 'out-of-city';
@@ -26,6 +26,7 @@ interface BookingData {
   passengerCount: number;
   petCount: number;
   doorOpeningRequested: boolean;
+  personPreferenceId: number; // References person_preferences table
   pickupLocation: string;
   dropoffLocation: string;
   pickupLat: number;
@@ -385,6 +386,7 @@ export default function Booking() {
     passengerCount: 1,
     petCount: 0,
     doorOpeningRequested: false,
+    personPreferenceId: 6, // Default to "General (All)" preference
     pickupLocation: '',
     dropoffLocation: '',
     pickupLat: 0,
@@ -622,7 +624,7 @@ export default function Booking() {
 
   // Navigation helpers
   const nextStep = () => {
-    const steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'locations', 'confirmation'];
+    const steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'];
     const currentIndex = steps.indexOf(currentStep);
     
     // Always show open-door step - removed auto-skip logic
@@ -633,7 +635,7 @@ export default function Booking() {
   };
   
   const prevStep = () => {
-    const steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'locations', 'confirmation'];
+    const steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'];
     const currentIndex = steps.indexOf(currentStep);
     
     // Always show open-door step when going back - removed auto-skip logic
@@ -691,8 +693,14 @@ export default function Booking() {
       rider_count: bookingData.passengerCount || 1,
       pet_count: bookingData.petCount || 0,
       open_door_requested: bookingData.doorOpeningRequested || false,
+      person_preference_id: bookingData.personPreferenceId,
       total_fare: confirmationPrice ? parseFloat(confirmationPrice) : 0.0,
     };
+
+    // Debug logging
+    console.log('Booking data personPreferenceId:', bookingData.personPreferenceId);
+    console.log('Ride data person_preference_id:', rideData.person_preference_id);
+    console.log('Full ride data:', rideData);
 
     bookRideMutation.mutate(rideData);
   };
@@ -705,6 +713,7 @@ export default function Booking() {
       'ride-type': 'Pick one ride type',
       'passengers': 'How many people and pets are riding?',
       'open-door': 'Door opening service?',
+      'driver-preferences': 'Driver preferences',
       'locations': 'Set your pickup and drop-off locations',
       'confirmation': 'Confirm your booking'
     };
@@ -722,6 +731,8 @@ export default function Booking() {
       case 'passengers':
         return bookingData.passengerCount >= 1;
       case 'open-door':
+        return true; // Always can proceed
+      case 'driver-preferences':
         return true; // Always can proceed
       case 'locations':
         return !!bookingData.pickupLocation && !!bookingData.dropoffLocation;
@@ -749,7 +760,7 @@ export default function Booking() {
             <p className="text-sm text-slate-300">{getStepTitle()}</p>
           </div>
           <div className="text-sm text-slate-300 font-medium">
-            Step {['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'locations', 'confirmation'].indexOf(currentStep) + 1} of 7
+            Step {['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'].indexOf(currentStep) + 1} of 8
           </div>
         </div>
       </header>
@@ -1103,6 +1114,159 @@ export default function Booking() {
           </div>
         );
         
+      case 'driver-preferences':
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <h2 className="text-xl font-bold text-white mb-3">Driver preferences</h2>
+              <p className="text-slate-300 text-sm">Let us know your preferences for the driver (optional).</p>
+            </div>
+            
+            {/* Driver Preference Options */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={() => {
+                    console.log('Setting personPreferenceId to 1 (Female Only)');
+                    setBookingData(prev => ({ 
+                      ...prev, 
+                      personPreferenceId: 1 // Female Only
+                    }));
+                  }}
+                  className={cn(
+                    "p-4 rounded-xl text-left transition-all duration-300 border-2",
+                    bookingData.personPreferenceId === 1
+                      ? "bg-blue-600 text-white border-blue-600 shadow-lg"
+                      : "bg-slate-700 text-white border-slate-600 hover:border-blue-500"
+                  )}
+                  data-testid="driver-preference-female"
+                >
+                  <div className="flex items-center">
+                    <i className="fas fa-female text-3xl mr-4"></i>
+                    <div>
+                      <h3 className="text-xl font-bold mb-1">Female drivers only</h3>
+                      <p className="text-sm opacity-80">Prefer a female driver</p>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setBookingData(prev => ({ 
+                    ...prev, 
+                    personPreferenceId: 2 // Male Only
+                  }))}
+                  className={cn(
+                    "p-4 rounded-xl text-left transition-all duration-300 border-2",
+                    bookingData.personPreferenceId === 2
+                      ? "bg-blue-600 text-white border-blue-600 shadow-lg"
+                      : "bg-slate-700 text-white border-slate-600 hover:border-blue-500"
+                  )}
+                  data-testid="driver-preference-male"
+                >
+                  <div className="flex items-center">
+                    <i className="fas fa-male text-3xl mr-4"></i>
+                    <div>
+                      <h3 className="text-xl font-bold mb-1">Male drivers only</h3>
+                      <p className="text-sm opacity-80">Prefer a male driver</p>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setBookingData(prev => ({ 
+                    ...prev, 
+                    personPreferenceId: 3 // Deaf Only
+                  }))}
+                  className={cn(
+                    "p-4 rounded-xl text-left transition-all duration-300 border-2",
+                    bookingData.personPreferenceId === 3
+                      ? "bg-blue-600 text-white border-blue-600 shadow-lg"
+                      : "bg-slate-700 text-white border-slate-600 hover:border-blue-500"
+                  )}
+                  data-testid="driver-preference-deaf"
+                >
+                  <div className="flex items-center">
+                    <i className="fas fa-hand-paper text-3xl mr-4"></i>
+                    <div>
+                      <h3 className="text-xl font-bold mb-1">Deaf or hard-of-hearing drivers only</h3>
+                      <p className="text-sm opacity-80">Prefer a deaf or hard-of-hearing driver</p>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setBookingData(prev => ({ 
+                    ...prev, 
+                    personPreferenceId: 4 // Hearing Only
+                  }))}
+                  className={cn(
+                    "p-4 rounded-xl text-left transition-all duration-300 border-2",
+                    bookingData.personPreferenceId === 4
+                      ? "bg-blue-600 text-white border-blue-600 shadow-lg"
+                      : "bg-slate-700 text-white border-slate-600 hover:border-blue-500"
+                  )}
+                  data-testid="driver-preference-hearing"
+                >
+                  <div className="flex items-center">
+                    <i className="fas fa-ear-listen text-3xl mr-4"></i>
+                    <div>
+                      <h3 className="text-xl font-bold mb-1">Hearing drivers only</h3>
+                      <p className="text-sm opacity-80">Prefer a hearing driver</p>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setBookingData(prev => ({ 
+                    ...prev, 
+                    personPreferenceId: 5 // Disabled Only
+                  }))}
+                  className={cn(
+                    "p-4 rounded-xl text-left transition-all duration-300 border-2",
+                    bookingData.personPreferenceId === 5
+                      ? "bg-blue-600 text-white border-blue-600 shadow-lg"
+                      : "bg-slate-700 text-white border-slate-600 hover:border-blue-500"
+                  )}
+                  data-testid="driver-preference-disabled"
+                >
+                  <div className="flex items-center">
+                    <i className="fas fa-wheelchair text-3xl mr-4"></i>
+                    <div>
+                      <h3 className="text-xl font-bold mb-1">Drivers comfortable with disabilities</h3>
+                      <p className="text-sm opacity-80">Prefer a driver experienced with disabilities</p>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    console.log('Setting personPreferenceId to 6 (No preference)');
+                    setBookingData(prev => ({ 
+                      ...prev, 
+                      personPreferenceId: 6 // General (All)
+                    }));
+                  }}
+                  className={cn(
+                    "p-4 rounded-xl text-left transition-all duration-300 border-2",
+                    bookingData.personPreferenceId === 6
+                      ? "bg-blue-600 text-white border-blue-600 shadow-lg"
+                      : "bg-slate-700 text-white border-slate-600 hover:border-blue-500"
+                  )}
+                  data-testid="driver-preference-general"
+                >
+                  <div className="flex items-center">
+                    <i className="fas fa-user-friends text-3xl mr-4"></i>
+                    <div>
+                      <h3 className="text-xl font-bold mb-1">No preference</h3>
+                      <p className="text-sm opacity-80">Any driver is fine</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+        
       case 'locations':
         return <LocationSelectionView 
           bookingData={bookingData} 
@@ -1154,6 +1318,28 @@ export default function Booking() {
                       <span className="text-white">Requested</span>
                     </div>
                   )}
+                </div>
+              </div>
+              
+              {/* Driver Preferences */}
+              <div className="bg-slate-700 rounded-xl p-4 border border-slate-600">
+                <h3 className="font-semibold text-white mb-3">Driver Preferences</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">Preference:</span>
+                    <span className="text-white">
+                      {bookingData.personPreferenceId === 1 ? 'Female drivers only' :
+                       bookingData.personPreferenceId === 2 ? 'Male drivers only' :
+                       bookingData.personPreferenceId === 3 ? 'Deaf or hard-of-hearing drivers only' :
+                       bookingData.personPreferenceId === 4 ? 'Hearing drivers only' :
+                       bookingData.personPreferenceId === 5 ? 'Drivers comfortable with disabilities' :
+                       'No preference'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">ID:</span>
+                    <span className="text-white text-xs">{bookingData.personPreferenceId}</span>
+                  </div>
                 </div>
               </div>
               

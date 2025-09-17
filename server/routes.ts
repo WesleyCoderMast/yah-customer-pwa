@@ -355,7 +355,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Ride routes
   app.post("/api/rides", async (req, res) => {
     try {
+      // Debug logging
+      console.log('Received ride data:', req.body);
+      console.log('person_preference_id from request:', req.body.person_preference_id);
+      
       const rideData = insertRideSchema.parse(req.body);
+      
+      // Debug parsed data
+      console.log('Parsed ride data:', rideData);
+      console.log('person_preference_id after parsing:', rideData.person_preference_id);
 
       // Ensure total_fare is stored when booking
       if (rideData.total_fare == null) {

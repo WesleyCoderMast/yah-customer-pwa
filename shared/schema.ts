@@ -202,18 +202,20 @@ export const rides = pgTable("rides", {
   pickup: text("pickup").notNull(),
   dropoff: text("dropoff").notNull(),
   ride_type: text("ride_type").notNull(),
-  status: text("status").notNull(), // pending, accepted, in_progress, completed, cancelled
-  distance_miles: doublePrecision("distance_miles"),
-  duration_minutes: doublePrecision("duration_minutes"),
+  status: text("status").notNull().default("pending"), // pending, accepted, in_progress, completed, cancelled
+  distance_miles: doublePrecision("distance_miles").notNull().default(0),
+  duration_minutes: doublePrecision("duration_minutes").notNull().default(0),
   started_at: timestamp("started_at"),
   completed_at: timestamp("completed_at"),
   accepted_at: timestamp("accepted_at"),
   cancelled_at: timestamp("cancelled_at"),
-  rider_count: smallint("rider_count"),
-  pet_count: smallint("pet_count"),
-  open_door_requested: boolean("open_door_requested"),
-  tip_amount: decimal("tip_amount"),
-  total_fare: decimal("total_fare"),
+  tip_amount: decimal("tip_amount").notNull().default("0"),
+  rider_count: smallint("rider_count").notNull().default(1),
+  pet_count: smallint("pet_count").notNull().default(0),
+  open_door_requested: boolean("open_door_requested").notNull().default(false),
+  total_fare: doublePrecision("total_fare").default(0),
+  cancellation_reason: varchar("cancellation_reason"),
+  person_preference_id: integer("person_preference_id").default(6).references(() => personPreferences.id, { onDelete: "cascade", onUpdate: "cascade" }),
   customer_rating: smallint("customer_rating"), // 1 = thumbs down, 2 = thumbs up
   customer_rating_emoji: text("customer_rating_emoji"),
 });
@@ -361,6 +363,15 @@ export const savedLocations = pgTable("saved_locations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Person preferences table for driver rider group preferences
+export const personPreferences = pgTable("person_preferences", {
+  id: bigint("id", { mode: "bigint" }).primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: false }).notNull().defaultNow(),
+  name: varchar("name").notNull(), // 'deaf', 'hearing', 'disabled', 'general'
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
 // Insert schemas
 export const insertCustomerSchema = createInsertSchema(customers).omit({
   createdAt: true,
@@ -382,6 +393,7 @@ export const insertRideSchema = createInsertSchema(rides).omit({
   cancelled_at: z.date().optional().nullable(),
   tip_amount: z.string().optional().nullable(),
   open_door_requested: z.boolean().optional().nullable(),
+  person_preference_id: z.number().min(1).max(6).optional(),
   total_fare: z.number().optional().nullable(),
 });
 
