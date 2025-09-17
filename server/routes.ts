@@ -135,6 +135,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put("/api/customer/profile", async (req, res) => {
+    try {
+      const { customerId, name, email, gender, disabledType, profilePhoto } = req.body;
+      
+      if (!customerId) {
+        return res.status(400).json({ message: "Customer ID is required" });
+      }
+
+      // Validate gender if provided
+      if (gender && !['male', 'female'].includes(gender)) {
+        return res.status(400).json({ message: "Invalid gender value" });
+      }
+
+      // Validate disabled type if provided
+      if (disabledType && !['none', 'hearing', 'deaf', 'blind', 'disabled'].includes(disabledType)) {
+        return res.status(400).json({ message: "Invalid disabled type value" });
+      }
+
+      const updateData = {
+        ...(name && { name }),
+        ...(email && { email }),
+        ...(gender && { gender }),
+        ...(disabledType && { disabledType }),
+        ...(profilePhoto && { profilePhoto }),
+      };
+
+      const updatedCustomer = await storage.updateCustomer(customerId, updateData);
+      
+      res.json({ 
+        customer: { ...updatedCustomer, phone: undefined },
+        message: "Profile updated successfully" 
+      });
+    } catch (error: any) {
+      console.error("Profile update error:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
   // Payment method routes
   app.get("/api/payment-methods", async (req, res) => {
     try {
@@ -358,6 +396,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Debug logging
       console.log('Received ride data:', req.body);
       console.log('person_preference_id from request:', req.body.person_preference_id);
+      console.log('ride_type_id from request:', req.body.ride_type_id);
       
       const rideData = insertRideSchema.parse(req.body);
       

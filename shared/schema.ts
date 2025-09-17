@@ -108,6 +108,8 @@ export const customers = pgTable("customers", {
   totalRides: integer("total_rides"),
   totalPayments: decimal("total_payments"),
   isActive: boolean("is_active").notNull(),
+  gender: text("gender"), // 'male', 'female'
+  disabledType: text("disabled_type"), // 'hearing', 'deaf', 'blind', 'disabled', 'none'
 });
 
 // OTP verification table
@@ -165,7 +167,19 @@ export const drivers = pgTable("drivers", {
   rapydBeneficiaryId: text("rapyd_beneficiary_id"),
   bankAccountVerified: boolean("bank_account_verified").default(false),
   payoutMethod: text("payout_method"), // "bank_transfer" or "card"
-  lastPayoutAt: timestamp("last_payout_at")
+  lastPayoutAt: timestamp("last_payout_at"),
+  gender: text("gender"), // 'male', 'female'
+  disabledType: text("disabled_type"), // 'hearing', 'deaf', 'blind', 'disabled', 'none'
+});
+// Ride categories table
+export const rideCategories = pgTable("ride_categories", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  categoryName: text("category_name").notNull(),
+  scope: text("scope").notNull(), // e.g., "In-City", "Out-of-City / Out-of-State / Travel"
+  driverRatePerMile: decimal("driver_rate_per_mile", { precision: 10, scale: 2 }).notNull(),
+  minRate: decimal("min_rate", { precision: 10, scale: 2 }),
+  maxRate: decimal("max_rate", { precision: 10, scale: 2 }),
 });
 
 // Ride types table
@@ -174,6 +188,7 @@ export const rideTypes = pgTable("ride_types", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   title: text("title").notNull(),
   description: text("description"),
+  categoryId: uuid("category_id").references(() => rideCategories.id, { onDelete: "cascade", onUpdate: "cascade" }),
   pricePerMin: decimal("price_per_min", { precision: 10, scale: 2 }),
   driverPerMile: decimal("driver_per_mile", { precision: 10, scale: 2 }).notNull(),
   name: text("name"),
@@ -218,6 +233,7 @@ export const rides = pgTable("rides", {
   person_preference_id: integer("person_preference_id").default(6).references(() => personPreferences.id, { onDelete: "cascade", onUpdate: "cascade" }),
   customer_rating: smallint("customer_rating"), // 1 = thumbs down, 2 = thumbs up
   customer_rating_emoji: text("customer_rating_emoji"),
+  ride_type_id: uuid("ride_type_id").references(() => rideTypes.id, { onDelete: "set null", onUpdate: "cascade" }),
 });
 
 // YahChat sessions table
@@ -394,6 +410,7 @@ export const insertRideSchema = createInsertSchema(rides).omit({
   tip_amount: z.string().optional().nullable(),
   open_door_requested: z.boolean().optional().nullable(),
   person_preference_id: z.number().min(1).max(6).optional(),
+  ride_type_id: z.string().optional(),
   total_fare: z.number().optional().nullable(),
 });
 

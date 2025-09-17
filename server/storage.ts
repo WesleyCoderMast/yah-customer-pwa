@@ -135,7 +135,16 @@ export class DatabaseStorage implements IStorage {
       console.error('Error fetching customer:', error);
       return undefined;
     }
-    return data;
+    
+    if (!data) return undefined;
+    
+    // Map snake_case to camelCase for frontend compatibility
+    return {
+      ...data,
+      disabledType: data.disabled_type,
+      // Remove snake_case fields to avoid confusion
+      disabled_type: undefined,
+    };
   }
 
   async getCustomerByPhone(phoneNumber: string): Promise<Customer | undefined> {
@@ -152,7 +161,16 @@ export class DatabaseStorage implements IStorage {
       console.error('Error fetching customer by phone:', error);
       return undefined;
     }
-    return data;
+    
+    if (!data) return undefined;
+    
+    // Map snake_case to camelCase for frontend compatibility
+    return {
+      ...data,
+      disabledType: data.disabled_type,
+      // Remove snake_case fields to avoid confusion
+      disabled_type: undefined,
+    };
   }
 
   async createCustomer(customerData: InsertCustomer & { id?: string }): Promise<Customer> {
@@ -241,6 +259,12 @@ export class DatabaseStorage implements IStorage {
           break;
         case 'joinedAt':
           dbUpdates.joined_at = value;
+          break;
+        case 'gender':
+          dbUpdates.gender = value;
+          break;
+        case 'disabledType':
+          dbUpdates.disabled_type = value;
           break;
         default:
           dbUpdates[key] = value;

@@ -23,6 +23,7 @@ interface BookingData {
   destinationState?: string;
   category: string;
   rideType: string;
+  rideTypeId: string; // References ride_types table
   passengerCount: number;
   petCount: number;
   doorOpeningRequested: boolean;
@@ -383,6 +384,7 @@ export default function Booking() {
     tripArea: 'in-city',
     category: '',
     rideType: '',
+    rideTypeId: '',
     passengerCount: 1,
     petCount: 0,
     doorOpeningRequested: false,
@@ -687,6 +689,7 @@ export default function Booking() {
       pickup: bookingData.pickupLocation || '',
       dropoff: bookingData.dropoffLocation || '',
       ride_type: bookingData.rideType || '',
+      ride_type_id: bookingData.rideTypeId || '',
       status: 'pending',
       distance_miles: bookingData.estimatedDistance || 5.0,
       duration_minutes: bookingData.estimatedTime || 15.0,
@@ -962,7 +965,7 @@ export default function Booking() {
             
             <RideTypeSelector
               selectedRideType={bookingData.rideType}
-              onRideTypeChange={(rideType) => setBookingData(prev => ({ ...prev, rideType }))}
+              onRideTypeChange={(rideType, rideTypeId) => setBookingData(prev => ({ ...prev, rideType, rideTypeId }))}
               tripArea={bookingData.tripArea}
               selectedCategory={bookingData.category}
             />

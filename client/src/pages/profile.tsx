@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/contexts/ThemeContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { VITE_API_BASE_URL } from "@/lib/config";
 export default function Profile() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   // Fetch customer data from database
   const { data: customerData, isLoading } = useQuery({
@@ -29,6 +30,8 @@ export default function Profile() {
       return result.customer;
     },
     enabled: !!user?.id,
+    refetchOnWindowFocus: true, // Refetch when window regains focus
+    staleTime: 0, // Always consider data stale to ensure fresh data
   });
 
   const [isEditing, setIsEditing] = useState(false);
@@ -45,7 +48,12 @@ export default function Profile() {
     firstName: firstName,
     lastName: lastName,
     email: email,
+    gender: customerData?.gender || '',
+    disabledType: customerData?.disabledType || 'none',
   });
+
+  const [profileAvatar, setProfileAvatar] = useState(customerData?.profilePhoto || '');
+  const [isUploading, setIsUploading] = useState(false);
 
   // Update editData when customer data loads
   useEffect(() => {
@@ -55,6 +63,8 @@ export default function Profile() {
         firstName: nameParts[0] || 'User',
         lastName: nameParts.slice(1).join(' ') || '',
         email: customerData.email || '',
+        gender: customerData.gender || '',
+        disabledType: customerData.disabledType || 'none', // Default to 'none' if not set
       });
     }
   }, [customerData]);
@@ -74,13 +84,100 @@ export default function Profile() {
 
   const { theme, toggleTheme, isAutoMode, setAutoMode } = useTheme();
 
-  const handleSaveProfile = () => {
-    // In a real app, this would update the user profile in the database
-    toast({
-      title: "Profile Updated",
-      description: "Your profile has been updated successfully",
-    });
-    setIsEditing(false);
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Invalid File",
+        description: "Please select an image file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File Too Large",
+        description: "Please select an image smaller than 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      // Convert to base64 for now (in production, upload to cloud storage)
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setProfileAvatar(result);
+        setIsUploading(false);
+        toast({
+          title: "Avatar Updated",
+          description: "Your profile picture has been updated",
+        });
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      setIsUploading(false);
+      toast({
+        title: "Upload Error",
+        description: "Failed to upload image. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const response = await fetch(`${VITE_API_BASE_URL}/api/customer/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customerId: user?.id,
+          name: `${editData.firstName} ${editData.lastName}`.trim(),
+          email: editData.email,
+          gender: editData.gender,
+          disabledType: editData.disabledType,
+          profilePhoto: profileAvatar,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update profile');
+      }
+
+      // Invalidate and refetch all customer-related data
+      await queryClient.invalidateQueries({
+        queryKey: ['/api/customer/profile', user?.id]
+      });
+      
+      // Also invalidate any other customer-related queries
+      await queryClient.invalidateQueries({
+        predicate: (query) => {
+          return query.queryKey.includes(user?.id) && 
+                 (query.queryKey.includes('customer') || query.queryKey.includes('profile'));
+        }
+      });
+      
+      toast({
+        title: "Profile Updated",
+        description: "Your profile has been updated successfully",
+      });
+      setIsEditing(false);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update profile. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleLogout = () => {
@@ -155,11 +252,38 @@ export default function Profile() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card border-b border-border p-4">
         <div className="flex items-center space-x-3">
-          <Avatar className="w-12 h-12 border-2 border-primary/20">
-            <AvatarFallback className="bg-primary text-primary-foreground font-bold text-lg">
-              {firstName?.[0]}{lastName?.[0]}
-            </AvatarFallback>
-          </Avatar>
+          <div className="relative">
+            <Avatar className="w-12 h-12 border-2 border-primary/20">
+              {profileAvatar ? (
+                <img 
+                  src={profileAvatar} 
+                  alt="Profile" 
+                  className="w-full h-full object-cover rounded-full"
+                />
+              ) : (
+                <AvatarFallback className="bg-primary text-primary-foreground font-bold text-lg">
+                  {firstName?.[0]}{lastName?.[0]}
+                </AvatarFallback>
+              )}
+            </Avatar>
+            {isEditing && (
+              <label 
+                htmlFor="avatar-upload"
+                className="absolute -bottom-1 -right-1 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center cursor-pointer hover:bg-primary/90 transition-colors"
+                title="Change profile picture"
+              >
+                <i className="fas fa-camera text-xs"></i>
+              </label>
+            )}
+            <input
+              id="avatar-upload"
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarUpload}
+              className="hidden"
+              disabled={isUploading}
+            />
+          </div>
           <div>
             <h1 className="text-xl font-bold text-primary">{displayName}</h1>
             <p className="text-xs text-muted-foreground flex items-center">
@@ -228,6 +352,44 @@ export default function Profile() {
                   disabled={!isEditing}
                   className="bg-background border-border focus:border-primary"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Gender</Label>
+                  <Select
+                    value={editData.gender}
+                    onValueChange={(value) => setEditData(prev => ({ ...prev, gender: value }))}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger className="bg-background border-border focus:border-primary">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="disabledType">Disability Type</Label>
+                  <Select
+                    value={editData.disabledType}
+                    onValueChange={(value) => setEditData(prev => ({ ...prev, disabledType: value }))}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger className="bg-background border-border focus:border-primary">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="hearing">Hearing</SelectItem>
+                      <SelectItem value="deaf">Deaf</SelectItem>
+                      <SelectItem value="blind">Blind</SelectItem>
+                      <SelectItem value="disabled">Disabled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="pt-2 border-t border-border">

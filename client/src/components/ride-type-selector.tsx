@@ -9,7 +9,7 @@ import { VITE_API_BASE_URL } from "@/lib/config";
 
 interface RideTypeSelectorProps {
   selectedRideType: string;
-  onRideTypeChange: (rideType: string) => void;
+  onRideTypeChange: (rideType: string, rideTypeId: string) => void;
   tripArea: 'in-city' | 'out-of-city';
   selectedCategory?: string; // Selected category from step 2
   className?: string;
@@ -229,7 +229,7 @@ export default function RideTypeSelector({ selectedRideType, onRideTypeChange, t
                     {rides.map((rideType: RideType) => (
                       <button
                         key={rideType.id.toString()}
-                        onClick={() => onRideTypeChange(rideType.title)}
+                        onClick={() => onRideTypeChange(rideType.title, rideType.id.toString())}
                         className={cn(
                           "p-3 rounded-lg transition-all duration-200 text-sm relative text-left",
                           selectedRideType === rideType.title
