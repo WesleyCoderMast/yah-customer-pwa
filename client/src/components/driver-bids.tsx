@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +38,7 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isSelecting, setIsSelecting] = useState(false);
+  const [paymentSuccessful, setPaymentSuccessful] = useState(false);
 
   // Generate Yah driver ID format
   const generateYahDriverId = (driverId: string, driverName?: string) => {
@@ -63,8 +64,16 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
 
   const bids = (bidsData as any)?.requests || [];
 
+  // Reset payment successful state when ride status changes or data refreshes
+  useEffect(() => {
+    if (rideStatus !== 'pending' && rideStatus !== 'searching_driver') {
+      setPaymentSuccessful(false);
+    }
+  }, [rideStatus]);
+
   // Handle payment success
   const handlePaymentSuccess = () => {
+    setPaymentSuccessful(true);
     setSelectedDriverData(null);
     onDriverSelected?.();
   };
@@ -217,12 +226,12 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
               {/* Select & Pay with Stripe */}
               <Button
                 onClick={() => handleDriverSelection(bid.id, bid)}
-                disabled={isSelecting}
-                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-12 text-lg font-semibold"
+                disabled={isSelecting || paymentSuccessful}
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-12 text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 data-testid={`button-select-driver-${bid.id}`}
               >
                 <i className="fas fa-credit-card mr-2"></i>
-                {isSelecting ? 'Preparing...' : 'Select & Pay'}
+                {paymentSuccessful ? 'Payment Successful!' : isSelecting ? 'Preparing...' : 'Select & Pay'}
               </Button>
               
               {bid.notes && (

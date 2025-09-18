@@ -111,7 +111,7 @@ export default function PaymentPage() {
                   Add
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-yah-darker border-yah-gold/20">
+              <DialogContent className="bg-gray-900 border-yah-gold/20">
                 <DialogHeader>
                   <DialogTitle className="text-yah-gold flex items-center">
                     <i className="fas fa-plus mr-2"></i>

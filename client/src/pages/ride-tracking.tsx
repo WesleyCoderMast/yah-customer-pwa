@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import DriverBids from "@/components/driver-bids";
@@ -64,8 +65,9 @@ export default function RideTracking() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
       queryClient.invalidateQueries({ queryKey: ['/api/rides'] });
-      toast({ title: 'Ride Completed', description: 'Thanks for your feedback!' });
+      toast({ title: 'Ride Completed', description: 'Thank you for riding with us and for your feedback!' });
       setShowRating(false);
+      setTimeout(() => setLocation('/rides'), 2000);
     },
     onError: (error: any) => {
       toast({ title: 'Unable to complete ride', description: error.message, variant: 'destructive' });
@@ -337,15 +339,8 @@ export default function RideTracking() {
 
   const canCancelRide = ['pending', 'searching_driver', 'driver_assigned', 'accepted'].includes(ride.status);
 
-  const finishRide = async () => {
-    try {
-      await apiRequest('POST', `/api/rides/${params?.rideId}/finish`);
-      toast({ title: 'Ride Finished', description: 'Thank you for riding with us.' });
-      queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
-      queryClient.invalidateQueries({ queryKey: ['/api/rides'] });
-    } catch (e: any) {
-      toast({ title: 'Unable to finish ride', description: e?.message || 'Unknown error', variant: 'destructive' });
-    }
+  const finishRide = () => {
+    setShowRating(true);
   };
 
   return (
@@ -562,29 +557,34 @@ export default function RideTracking() {
                   Cancel Ride
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-yah-darker border-yah-gold/20">
-                <DialogHeader>
-                  <DialogTitle className="text-yah-gold">Cancel Ride</DialogTitle>
+              <DialogContent className="bg-gray-900 border-yah-gold/20 backdrop-blur-sm w-[92%] max-w-md">
+                <DialogHeader className="bg-gray-800 rounded-t-lg -m-6 mb-0 px-6 py-4 border-b border-yah-gold/20">
+                  <DialogTitle className="text-yah-gold text-center font-bold text-lg">
+                    Cancel Ride
+                  </DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4">
-                  <p className="text-gray-300">Why are you cancelling this ride?</p>
-                  <Textarea
-                    value={cancellationReason}
-                    onChange={(e) => setCancellationReason(e.target.value)}
-                    placeholder="Optional: Tell us why you're cancelling..."
-                    className="bg-yah-muted border-yah-gold/30"
-                    data-testid="textarea-cancellationReason"
-                  />
-                  <div className="bg-muted/40 rounded p-3 text-sm">
+                <div className="space-y-4 pt-4 px-0">
+                  <p className="text-white text-center">Why are you cancelling this ride?</p>
+                  <div className="relative">
+                    <Textarea
+                      value={cancellationReason}
+                      onChange={(e) => setCancellationReason(e.target.value)}
+                      placeholder="Tell us why you're cancelling..."
+                      className="bg-white/10 border-white/20 text-white placeholder:text-gray-400 min-h-[80px] resize-none text-sm"
+                      data-testid="textarea-cancellationReason"
+                    />
+                    <i className="fas fa-comment absolute top-3 right-3 text-gray-400"></i>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-4 text-sm border border-white/10">
                     {refundQuote ? (
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Refund you’ll receive</span>
+                        <span className="text-gray-300">Refund you'll receive</span>
                         <span className="font-semibold text-yah-gold">${(refundQuote.amountCents / 100).toFixed(2)}</span>
                       </div>
                     ) : (
                       <Button
                         variant="outline"
-                        className="w-full border-yah-gold/30 text-yah-gold"
+                        className="w-full border-yah-gold/30 text-yah-gold hover:bg-yah-gold/10 text-sm"
                         onClick={async () => {
                           try {
                             const res = await apiRequest('GET', `/api/rides/${params?.rideId}/refund-quote`);
@@ -595,16 +595,17 @@ export default function RideTracking() {
                           }
                         }}
                       >
+                        <i className="fas fa-calculator mr-2"></i>
                         Calculate Refund
                       </Button>
                     )}
                   </div>
-                  <div className="flex space-x-3">
+                  <div className="flex flex-col space-y-2 pt-2">
                     <Button
                       variant="destructive"
                       onClick={() => cancelRideMutation.mutate(cancellationReason)}
                       disabled={cancelRideMutation.isPending}
-                      className="flex-1"
+                      className="w-full bg-red-600 hover:bg-red-700 text-white text-sm"
                       data-testid="button-confirmCancel"
                     >
                       {cancelRideMutation.isPending ? (
@@ -612,14 +613,14 @@ export default function RideTracking() {
                       ) : (
                         <i className="fas fa-times mr-2"></i>
                       )}
-                      Refund & Cancel
+                      Cancel & Get Refund
                     </Button>
                     <Button 
                       variant="outline" 
                       onClick={() => setShowCancel(false)}
-                      className="flex-1 border-yah-gold/30 text-yah-gold"
+                      className="w-full border-yah-gold/30 text-yah-gold hover:bg-yah-gold/10 text-sm"
                     >
-                      Keep Ride (No Refund)
+                      Keep My Ride
                     </Button>
                   </div>
                 </div>
@@ -630,7 +631,7 @@ export default function RideTracking() {
 
         {/* Rating Dialog */}
         <Dialog open={showRating} onOpenChange={setShowRating}>
-          <DialogContent className="bg-yah-darker border-yah-gold/20">
+          <DialogContent className="bg-gray-900 border-yah-gold/20 w-[92%] max-w-md">
             <DialogHeader>
               <DialogTitle className="text-yah-gold text-center">Rate Your Ride</DialogTitle>
             </DialogHeader>

@@ -172,7 +172,7 @@ export default function PaymentMethodCard({ paymentMethod }: PaymentMethodCardPr
                   <i className="fas fa-trash"></i>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-yah-darker border-yah-gold/20">
+              <DialogContent className="bg-gray-900 border-yah-gold/20">
                 <DialogHeader>
                   <DialogTitle className="text-yah-gold">Remove Payment Method</DialogTitle>
                 </DialogHeader>

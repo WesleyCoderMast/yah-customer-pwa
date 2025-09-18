@@ -207,7 +207,7 @@ export default function YahChat({ rideId, isModal = false }: YahChatProps) {
             <i className="fas fa-robot text-yah-darker text-xl"></i>
           </Button>
         </DialogTrigger>
-        <DialogContent className="bg-yah-darker border-yah-gold/20 max-w-md h-[600px] p-0">
+        <DialogContent className="bg-gray-900 border-yah-gold/20 max-w-md h-[600px] p-0">
           <ChatContent />
         </DialogContent>
       </Dialog>
