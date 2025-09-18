@@ -41,7 +41,7 @@ export const config = {
   // Payment Configuration
   payments: {
     stripe: {
-      publishableKey: "pk_test_51RYe20IzN3Kd4YuMFQYS3q4IwiibtOwzxKYQbWRiIl4yqBepJcnKTCutWUYeYc9fwMdqRjh6Lph96fvsNK00J6QW00mXQyGTEF"
+      publishableKey: "xxx"
     }
   }
 };
