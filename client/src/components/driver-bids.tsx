@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { apiRequest } from "@/lib/queryClient";
 import PaymentForm from "./payment-form";
-import { VITE_API_BASE_URL, VITE_ADYEN_MERCHANT_ACCOUNT } from "@/lib/config";
+import { VITE_API_BASE_URL } from "@/lib/config";
 
 interface DriverBidsProps {
   rideId: string;
@@ -73,83 +73,6 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
   const handlePaymentCancel = () => {
     setSelectedDriverData(null);
     setIsSelecting(false);
-  };
-
-  // Create payment link for driver selection
-  const handleCreatePaymentLink = async (bid: DriverBid) => {
-    try {
-      setIsSelecting(true);
-      
-      // Calculate fare amount
-      const fareAmount = parseFloat(String(bid.estimated_fare_max ?? '0'));
-      const amountMinor = Math.round(fareAmount * 100); // Convert to minor units
-      
-      // Generate Yah driver ID
-      const yahDriverId = bid.drivers?.id ? generateYahDriverId(bid.drivers.id, bid.drivers.name) : 'Yah-0000 Driver';
-      
-      // Create shorter reference (max 80 chars for Adyen)
-      const shortRideId = rideId.substring(0, 8); // First 8 chars of ride ID
-      const shortBidId = bid.id.substring(0, 8); // First 8 chars of bid ID
-      const reference = `R${shortRideId}B${shortBidId}`; // Format: R12345678B87654321 (18 chars)
-      
-      // Create payment link
-      const resp = await fetch(`${VITE_API_BASE_URL}/api/payments/link`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          merchantAccount: VITE_ADYEN_MERCHANT_ACCOUNT,
-          amount: { currency: 'USD', value: amountMinor },
-          reference: reference,
-          description: `Payment for ride with ${yahDriverId}`,
-          shopperLocale: 'en_US',
-          returnUrl: `${window.location.origin}/ride/${rideId}?payment_success=true&psp_reference={pspReference}&result_code={resultCode}`, // Return to ride tracking page with payment success params
-          metadata: {
-            rideId: rideId,
-            bidId: bid.id,
-            driverId: bid.drivers?.id,
-            yahDriverId: yahDriverId
-          }
-        })
-      });
-      
-      const data = await resp.json();
-      if (!data.success) throw new Error(data.error || 'Failed to create payment link');
-      
-      // Open payment link avoiding popup blockers
-      if (data.url) {
-        // Attempt to use a window opened in the click handler context
-        const newWin = window.open('about:blank', '_blank');
-        if (newWin && !newWin.closed) {
-          newWin.opener = null;
-          newWin.location.replace(data.url);
-        } else {
-          // Fallback to anchor click
-          const a = document.createElement('a');
-          a.href = data.url;
-          a.target = '_blank';
-          a.rel = 'noopener';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        }
-        toast({
-          title: 'Payment Link Created',
-          description: 'A secure payment page has been opened. Complete your payment to confirm this driver.'
-        });
-        // Call the driver selected callback to refresh the ride data
-        onDriverSelected?.();
-      } else {
-        throw new Error('No payment URL received');
-      }
-    } catch (e: any) {
-      toast({ 
-        title: 'Unable to create payment link', 
-        description: e?.message || 'Unknown error', 
-        variant: 'destructive' 
-      });
-    } finally {
-      setIsSelecting(false);
-    }
   };
 
   // If payment form is shown, render it instead of driver list
@@ -291,19 +214,7 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
                 </div>
               </div>
               
-              {/* Payment Link Button */}
-              <Button
-                onClick={() => handleCreatePaymentLink(bid)}
-                disabled={isSelecting}
-                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-12 text-lg font-semibold"
-                data-testid={`button-select-driver-${bid.id}`}
-              >
-                <i className="fas fa-credit-card mr-2"></i>
-                {isSelecting ? 'Creating Payment...' : 'Select & Pay'}
-              </Button>
-              
-              {/* Commented out old Select & Pay button functionality */}
-              {/* 
+              {/* Select & Pay with Stripe */}
               <Button
                 onClick={() => handleDriverSelection(bid.id, bid)}
                 disabled={isSelecting}
@@ -311,18 +222,17 @@ export default function DriverBids({ rideId, rideStatus, onDriverSelected }: Dri
                 data-testid={`button-select-driver-${bid.id}`}
               >
                 <i className="fas fa-credit-card mr-2"></i>
-                Select & Pay
+                {isSelecting ? 'Preparing...' : 'Select & Pay'}
               </Button>
-              */}
               
-                    {bid.notes && (
-                      <div className="mt-3 p-3 bg-primary/10 rounded-md">
-                        <p className="text-sm text-muted-foreground">
-                          <i className="fas fa-comment mr-2"></i>
-                          "{bid.notes}"
-                        </p>
-                      </div>
-                    )}
+              {bid.notes && (
+                <div className="mt-3 p-3 bg-primary/10 rounded-md">
+                  <p className="text-sm text-muted-foreground">
+                    <i className="fas fa-comment mr-2"></i>
+                    "{bid.notes}"
+                  </p>
+                </div>
+              )}
               
             </div>
           ))}

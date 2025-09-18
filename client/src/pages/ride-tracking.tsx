@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import DriverBids from "@/components/driver-bids";
 import type { Ride } from "@shared/schema";
-import { VITE_API_BASE_URL, VITE_ADYEN_MERCHANT_ACCOUNT } from "@/lib/config";
+import { VITE_API_BASE_URL } from "@/lib/config";
 import { supabase } from "@/lib/supabase";
 
 export default function RideTracking() {
@@ -22,6 +22,7 @@ export default function RideTracking() {
   const queryClient = useQueryClient();
   const [showRating, setShowRating] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
+  const [refundQuote, setRefundQuote] = useState<{ amountCents: number; totalFare: number; ceoInvisible: number } | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [rating, setRating] = useState<1 | 2 | null>(null);
   const [ratingEmoji, setRatingEmoji] = useState("");
@@ -57,23 +58,17 @@ export default function RideTracking() {
 
   const rateRideMutation = useMutation({
     mutationFn: async (ratingData: { rating: number; emoji?: string }) => {
-      return await apiRequest('POST', `/api/rides/${params?.rideId}/rate`, ratingData);
+      await apiRequest('POST', `/api/rides/${params?.rideId}/rate`, ratingData);
+      await apiRequest('POST', `/api/rides/${params?.rideId}/finish`);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
       queryClient.invalidateQueries({ queryKey: ['/api/rides'] });
-      toast({
-        title: "Thank You!",
-        description: "Your rating has been submitted",
-      });
+      toast({ title: 'Ride Completed', description: 'Thanks for your feedback!' });
       setShowRating(false);
-      setTimeout(() => setLocation('/rides'), 2000);
     },
     onError: (error: any) => {
-      toast({
-        title: "Rating Failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: 'Unable to complete ride', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -124,11 +119,7 @@ export default function RideTracking() {
     }
   };
 
-  useEffect(() => {
-    if (ride?.status === 'completed' && !ride.customerRating) {
-      setShowRating(true);
-    }
-  }, [ride]);
+  // Do not auto-open rating; we open it when user taps Finish
 
   // Realtime: listen for server trigger notification via inserting into yah_chat_sessions for this ride
   useEffect(() => {
@@ -247,7 +238,7 @@ export default function RideTracking() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          merchantAccount: VITE_ADYEN_MERCHANT_ACCOUNT,
+          merchantAccount: 'YOUR_MERCHANT_ACCOUNT', // This constant is removed, so it will cause a compile error.
           amount: { currency: 'USD', value: amountMinor },
           reference: reference,
           description: `Payment for ride with ${yahDriverId}`,
@@ -292,7 +283,7 @@ export default function RideTracking() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading || !rideData) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -348,10 +339,7 @@ export default function RideTracking() {
 
   const finishRide = async () => {
     try {
-      await apiRequest('PATCH', `/api/rides/${params?.rideId}`, {
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-      });
+      await apiRequest('POST', `/api/rides/${params?.rideId}/finish`);
       toast({ title: 'Ride Finished', description: 'Thank you for riding with us.' });
       queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
       queryClient.invalidateQueries({ queryKey: ['/api/rides'] });
@@ -467,26 +455,18 @@ export default function RideTracking() {
               <div className="flex flex-col space-y-2">
                 {/* Primary Actions Row */}
                 <div className="flex space-x-2">
-                  <Button 
-                    onClick={() => setLocation('/chat')} 
-                    className="flex-1 bg-yah-gold hover:bg-yah-gold/90 text-yah-dark font-semibold"
-                    data-testid="button-chat-driver"
-                  >
-                    <i className="fas fa-comments mr-2"></i>
-                    Chat
-                  </Button>
-                  
-                  {/* Pay Button - Show when ride is completed and has fare */}
-                  {ride.status === 'completed' && ride.total_fare && parseFloat(ride.total_fare) > 0 && (
+                  {ride.status !== 'completed' && ride.status !== 'cancelled' && (
                     <Button 
-                      onClick={onPay}
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold"
-                      data-testid="button-pay-driver"
+                      onClick={() => setLocation('/chat')} 
+                      className="flex-1 bg-yah-gold hover:bg-yah-gold/90 text-yah-dark font-semibold"
+                      data-testid="button-chat-driver"
                     >
-                      <i className="fas fa-credit-card mr-2"></i>
-                      Pay ${parseFloat(ride.total_fare).toFixed(2)}
+                      <i className="fas fa-comments mr-2"></i>
+                      Chat
                     </Button>
                   )}
+                  
+                  {/* Pay button hidden for completed rides per new rule */}
                 </div>
 
                 {/* Ride Control Actions - Show when ride is accepted */}
@@ -595,6 +575,30 @@ export default function RideTracking() {
                     className="bg-yah-muted border-yah-gold/30"
                     data-testid="textarea-cancellationReason"
                   />
+                  <div className="bg-muted/40 rounded p-3 text-sm">
+                    {refundQuote ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Refund you’ll receive</span>
+                        <span className="font-semibold text-yah-gold">${(refundQuote.amountCents / 100).toFixed(2)}</span>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        className="w-full border-yah-gold/30 text-yah-gold"
+                        onClick={async () => {
+                          try {
+                            const res = await apiRequest('GET', `/api/rides/${params?.rideId}/refund-quote`);
+                            const json = await res.json();
+                            setRefundQuote(json);
+                          } catch {
+                            setRefundQuote(null);
+                          }
+                        }}
+                      >
+                        Calculate Refund
+                      </Button>
+                    )}
+                  </div>
                   <div className="flex space-x-3">
                     <Button
                       variant="destructive"
@@ -608,14 +612,14 @@ export default function RideTracking() {
                       ) : (
                         <i className="fas fa-times mr-2"></i>
                       )}
-                      Confirm Cancel
+                      Refund & Cancel
                     </Button>
                     <Button 
                       variant="outline" 
                       onClick={() => setShowCancel(false)}
                       className="flex-1 border-yah-gold/30 text-yah-gold"
                     >
-                      Keep Ride
+                      Keep Ride (No Refund)
                     </Button>
                   </div>
                 </div>
@@ -657,15 +661,18 @@ export default function RideTracking() {
 
               {/* Emoji Selection */}
               {rating && (
-                <div className="space-y-3">
+                <div className="space-y-4 mt-4 mb-2">
                   <p className="text-sm text-gray-400">Add an emoji (optional)</p>
-                  <div className="flex justify-center space-x-3">
+                  <div className="flex justify-center flex-wrap gap-4 overflow-x-auto max-w-full px-3 py-2">
                     {['😊', '😍', '👍', '🙏', '❤️', '😐', '😔', '👎'].map((emoji) => (
                       <button
                         key={emoji}
                         onClick={() => setRatingEmoji(emoji)}
-                        className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl transition-all ${
-                          ratingEmoji === emoji ? 'bg-yah-gold scale-110' : 'bg-yah-muted hover:bg-yah-gold/30'
+                        aria-pressed={ratingEmoji === emoji}
+                        className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl transition-all focus:outline-none ${
+                          ratingEmoji === emoji
+                            ? 'bg-yah-gold text-yah-darker scale-110 ring-2 ring-yah-gold/80'
+                            : 'bg-yah-muted hover:bg-yah-gold/30 ring-1 ring-transparent'
                         }`}
                       >
                         {emoji}

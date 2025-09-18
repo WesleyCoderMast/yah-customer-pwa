@@ -1,10 +1,16 @@
 import express, { type Request, Response, NextFunction } from "express";
+import { handleStripeWebhook } from "./stripeWebhook";
+import { authMiddleware } from "./auth";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+// Register Stripe webhook BEFORE json parsing, using raw body
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+// Require JWT auth for API routes
+app.use('/api', authMiddleware);
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -50,9 +56,14 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
+  const isDevelopment = process.env.NODE_ENV === "development" || app.get("env") === "development";
+  console.log(`Environment: NODE_ENV=${process.env.NODE_ENV}, app.env=${app.get("env")}, isDevelopment=${isDevelopment}`);
+  
+  if (isDevelopment) {
+    console.log("Setting up Vite development server...");
     await setupVite(app, server);
   } else {
+    console.log("Setting up static file serving...");
     serveStatic(app);
   }
 
@@ -61,6 +72,11 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
+  
+  // Set NODE_ENV to production if not already set
+  if (!process.env.NODE_ENV) {
+    process.env.NODE_ENV = 'production';
+  }
   server.listen({
     port,
     host: "0.0.0.0",

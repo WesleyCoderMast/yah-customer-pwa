@@ -39,21 +39,11 @@ export const config = {
   
   // Payment Service Configuration - REPLACE WITH YOUR ACTUAL VALUES
   payments: {
-    rapyd: {
-      accessKey: "your-rapyd-access-key", // Replace with your Rapyd access key
-      secretKey: "your-rapyd-secret-key" // Replace with your Rapyd secret key
-    },
-    wise: {
-      apiKey: "your-wise-api-key" // Replace with your Wise API key
-    },
-    adyen: {
-      merchantAccount: "YahGlobalMobilityLLCECOM", // Replace with your merchant account
-      username: "ws_470777@Company.YahGlobalMobilityLLC",
-      apiKey: "AQE2hmfxK43ObBJFw0m/n3Q5qf3VcYpFKp9FWmRa63epl2pCit5aPOWuQbOHhljNLwbcBBeJ4f04EMFdWw2+5HzctViMSCJMYAc=-oOymd5ylbuwXvZcwbLLYrgGemKDc4MBoOv4CDKVv4K0=-i1ivGSh2ZGs3@Xk78IT",
-      clientKey: "test_3ZD3YVSQNNFARHSIVOXGQH5PAIYQKLGK",
-      returnUrl: 'https://yahapp.online/payment-success',
-      environment: "TEST", // TEST or LIVE
-      hmacKey: "FAA8F5C14875221F9DBB019E4860D526D2DC5153D857BBE4C5A958D5E41F9CF3"
+    stripe: {
+      secretKey: "sk_test_51RYe20IzN3Kd4YuMtP5Ps9Jb6IwZUfhedADVJkPphClfycD747kTzwZVpWDfjYjAhP80eHyBRSo4K7YR8BcZGdOr00ROWjEhYw", // Replace with your Stripe secret key
+      publishableKey: "pk_test_51RYe20IzN3Kd4YuMFQYS3q4IwiibtOwzxKYQbWRiIl4yqBepJcnKTCutWUYeYc9fwMdqRjh6Lph96fvsNK00J6QW00mXQyGTEF", // Replace with your Stripe publishable key
+      webhookSecret: "whsec_79a9d0c32c528d891c17b954133c80533e5ee3efa274b5dda140637f638005bf",
+      webhookSignSecret: "whsec_79a9d0c32c528d891c17b954133c80533e5ee3efa274b5dda140637f638005bf"
     }
   }
 };
@@ -77,11 +67,6 @@ export const FROM_NAME = config.email.from.name;
 export const FROM_EMAIL = config.email.from.email;
 
 // Payment configuration
-export const RAPYD_ACCESS_KEY = config.payments.rapyd.accessKey;
-export const RAPYD_SECRET_KEY = config.payments.rapyd.secretKey;
-export const WISE_API_KEY = config.payments.wise.apiKey;
-export const ADYEN_API_KEY = config.payments.adyen.apiKey;
-export const ADYEN_MERCHANT_ACCOUNT = config.payments.adyen.merchantAccount;
-export const ADYEN_ENVIRONMENT = config.payments.adyen.environment;
-export const ADYEN_SUCCESS_RETURN_URL = config.payments.adyen.returnUrl;
-export const ADYEN_HMAC_KEY = config.payments.adyen.hmacKey;
+export const STRIPE_SECRET_KEY = config.payments.stripe.secretKey;
+export const STRIPE_PUBLISHABLE_KEY = config.payments.stripe.publishableKey;
+export const STRIPE_WEBHOOK_SECRET = config.payments.stripe.webhookSecret;

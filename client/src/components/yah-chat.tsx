@@ -131,18 +131,18 @@ export default function YahChat({ rideId, isModal = false }: YahChatProps) {
             messages.map((msg: ChatMessage) => (
               <div
                 key={msg.id}
-                className={`flex ${msg.isFromCustomer ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${msg.sender_role === 'customer' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
                   className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl ${
-                    msg.isFromCustomer
+                    msg.sender_role === 'customer'
                       ? 'bg-gradient-gold text-yah-darker'
                       : 'bg-yah-muted/50 text-white border border-yah-gold/20'
                   }`}
                 >
                   <p className="text-sm">{msg.message}</p>
                   <span className="text-xs opacity-70 mt-1 block">
-                    {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { 
+                    {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { 
                       hour: '2-digit', 
                       minute: '2-digit' 
                     }) : 'Now'}

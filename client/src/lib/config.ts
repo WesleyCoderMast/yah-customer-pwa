@@ -10,11 +10,11 @@ export const config = {
 
   // API Configuration
   api: {
+    // baseUrl: "http://45.32.7.247/:5000",
     baseUrl: "http://localhost:5000",
     timeout: 10000
   },
 
-  
   // App Configuration
   app: {
     name: "Yah Customer PWA",
@@ -40,10 +40,8 @@ export const config = {
   
   // Payment Configuration
   payments: {
-    adyen: {
-      clientKey: "test_3ZD3YVSQNNFARHSIVOXGQH5PAIYQKLGK",
-      environment: "test", // "test" or "live"
-      merchantAccount: "YahGlobalMobilityLLCECOM"
+    stripe: {
+      publishableKey: "pk_test_51RYe20IzN3Kd4YuMFQYS3q4IwiibtOwzxKYQbWRiIl4yqBepJcnKTCutWUYeYc9fwMdqRjh6Lph96fvsNK00J6QW00mXQyGTEF"
     }
   }
 };
@@ -55,9 +53,7 @@ export const VITE_API_BASE_URL = config.api.baseUrl;
 export const VITE_APP_NAME = config.app.name;
 export const VITE_APP_VERSION = config.app.version;
 export const VITE_APP_ENVIRONMENT = config.app.environment;
-export const VITE_ADYEN_CLIENT_KEY = config.payments.adyen.clientKey;
-export const VITE_ADYEN_ENVIRONMENT = config.payments.adyen.environment;
-export const VITE_ADYEN_MERCHANT_ACCOUNT = config.payments.adyen.merchantAccount;
+export const VITE_STRIPE_PUBLISHABLE_KEY = config.payments.stripe.publishableKey;
 
 // Default export for easy importing
 export default config;

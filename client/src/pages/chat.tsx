@@ -35,11 +35,10 @@ const showNotification = (message: string, driverName: string = "Driver") => {
       body: message,
       icon: "/yah-logo.png",
       badge: "/yah-logo.png",
+      // @ts-expect-error: 'vibrate' is not a standard NotificationOptions property, but supported in some browsers
       vibrate: [200, 100, 200],
       tag: "yah-chat",
     });
-
-    // Auto close after 5 seconds
     setTimeout(() => {
       notification.close();
     }, 5000);

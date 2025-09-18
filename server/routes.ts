@@ -2,7 +2,6 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { emailService } from "./emailService";
-import { wiseService } from "./wiseService";
 import { z } from "zod";
 import {
   insertPaymentMethodSchema,
@@ -17,8 +16,7 @@ import {
 } from "@shared/schema";
 import { createClient } from "@supabase/supabase-js";
 import { VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "./config";
-import paymentRoutes from "./paymentRoutes";
-import { scheduledPayoutService } from "./scheduledPayoutService";
+import stripeRoutes from "./stripeRoutes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize Supabase admin client for server-side operations
@@ -97,11 +95,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Payment routes
-  app.use("/api/payments", paymentRoutes);
+  // Cancel ride with refund (customer keeps penalty of CEO's share)
+  app.post('/api/rides/:rideId/cancel', async (req, res) => {
+    try {
+      const { rideId } = req.params;
+      const { reason } = req.body || {};
 
-  // Start scheduled payout service
-  scheduledPayoutService.start();
+      const ride = await storage.getRide(rideId);
+      if (!ride) return res.status(404).json({ message: 'Ride not found' });
+
+      // Calculate CEO share (20%) if payment exists
+      const payment = await storage.getPaymentByRideId(rideId);
+      let refundAmountCents = 0;
+      if (payment) {
+        const totalCents = Math.round(parseFloat(String((payment as any).amount)) * 100);
+        const ceoCents = Math.round(totalCents * 0.2);
+        refundAmountCents = Math.max(totalCents - ceoCents, 0);
+      }
+
+      // If paid via Stripe, issue partial refund
+      if (payment && (payment as any).reference_id?.startsWith('pi_')) {
+        const Stripe = (await import('stripe')).default;
+        const { STRIPE_SECRET_KEY } = await import('./config');
+        const stripe = new Stripe(STRIPE_SECRET_KEY as any);
+
+        // Fetch latest charge on the payment intent
+        const pi = await stripe.paymentIntents.retrieve((payment as any).reference_id, { expand: ['latest_charge'] });
+        const chargeId = (pi.latest_charge as any)?.id as string | undefined;
+        if (chargeId && refundAmountCents > 0) {
+          await stripe.refunds.create({
+            charge: chargeId,
+            amount: refundAmountCents,
+            reason: 'requested_by_customer',
+          });
+        }
+      }
+
+      // Cancel the ride
+      const cancelled = await storage.cancelRide(rideId, reason || 'customer_cancelled');
+
+      // Also mark any ride requests as dismissed
+      const requests = await storage.getRideRequests(rideId);
+      await Promise.all(requests.map(rr => storage.updateRideRequest(rr.id, { status: 'bid_dismissed' } as any)));
+
+      return res.json({ ride: cancelled, refundAmountCents });
+    } catch (err: any) {
+      console.error('Cancel ride error:', err);
+      return res.status(500).json({ message: 'Failed to cancel ride' });
+    }
+  });
+
+  // Payment routes (Stripe only)
+  app.use("/api/stripe", stripeRoutes);
 
   // Customer routes
   app.post("/api/customers", async (req, res) => {
@@ -117,6 +162,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Finish ride explicitly
+  app.post('/api/rides/:id/finish', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const ride = await storage.getRide(id);
+      if (!ride) return res.status(404).json({ message: 'Ride not found' });
+
+      // Allow finishing from accepted or in_progress
+      if (!['accepted', 'in_progress'].includes((ride as any).status)) {
+        return res.status(400).json({ message: 'Ride cannot be finished in its current status' });
+      }
+
+      const updated = await storage.updateRide(id, {
+        status: 'completed' as any,
+        completed_at: new Date().toISOString() as any,
+      } as any);
+
+      // Optionally dismiss any remaining pending requests
+      const requests = await storage.getRideRequests(id);
+      await Promise.all(requests.map(rr => {
+        if (rr.status !== 'bid_accepted' && rr.status !== 'bid_dismissed') {
+          return storage.updateRideRequest(rr.id, { status: 'bid_dismissed' } as any);
+        }
+        return Promise.resolve(rr);
+      }));
+
+      res.json({ ride: updated });
+    } catch (error: any) {
+      console.error('Ride finish error:', error);
+      res.status(500).json({ message: 'Failed to finish ride' });
+    }
+  });
+
   app.get("/api/customer/profile", async (req, res) => {
     try {
       const { customerId } = req.query;
@@ -129,10 +207,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Customer not found" });
       }
 
-      res.json({ customer: { ...customer, phone: undefined } });
+      res.json({
+        customer: { ...customer, phone: undefined },
+      });
     } catch (error: any) {
       console.error("Profile fetch error:", error);
       res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  // Payments history for a customer (payments + refunds)
+  app.get('/api/payments', async (req, res) => {
+    try {
+      const { customerId } = req.query;
+      if (!customerId || typeof customerId !== 'string') {
+        return res.status(400).json({ message: 'customerId required' });
+      }
+      const { supabase } = await import('./db');
+      const { data: payments, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false });
+      if (error) return res.status(500).json({ message: error.message });
+
+      const { data: refunds } = await supabase
+        .from('refund_logs')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false });
+
+      res.json({ payments: payments || [], refunds: refunds || [] });
+    } catch (err: any) {
+      console.error('Payments history error:', err);
+      res.status(500).json({ message: 'Failed to fetch payments' });
     }
   });
 
@@ -201,193 +309,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res
         .status(400)
         .json({ message: error.message || "Failed to create payment method" });
-    }
-  });
-
-  // Payment processing routes
-  app.post("/api/payments/process", async (req, res) => {
-    try {
-      const {
-        rideId,
-        requestId,
-        amount,
-        cardNumber,
-        expiryDate,
-        securityCode,
-        cardHolderName,
-        country,
-        postalCode,
-      } = req.body;
-
-      // Validate required fields
-      if (
-        !rideId ||
-        !requestId ||
-        !amount ||
-        !cardNumber ||
-        !expiryDate ||
-        !securityCode ||
-        !cardHolderName ||
-        !country ||
-        !postalCode
-      ) {
-        return res
-          .status(400)
-          .json({ message: "All payment fields are required" });
-      }
-
-      // Validate ride and request exist
-      const ride = await storage.getRide(rideId);
-      if (!ride) {
-        return res.status(404).json({ message: "Ride not found" });
-      }
-
-      const request = await storage.getRideRequest(requestId);
-      if (!request || request.ride_id !== rideId) {
-        return res.status(404).json({ message: "Ride request not found" });
-      }
-
-      // Process payment through Rapyd
-      const paymentResult = await wiseService.processCardPayment({
-        amount: parseFloat(amount),
-        currency: "USD",
-        cardNumber,
-        expiryDate,
-        securityCode,
-        cardHolderName,
-        billingAddress: {
-          country,
-          postalCode,
-        },
-        description: `Yah Ride Payment - ${ride.ride_type}`,
-        reference: rideId,
-      });
-      console.log(
-        "****************** here is payment result *************************",
-      );
-      console.log(paymentResult);
-      if (paymentResult.success) {
-        // Payment successful - update ride with selected driver
-        await storage.updateRide(rideId, {
-          driver_id: request.driver_id,
-          status: "accepted",
-          accepted_at: new Date(),
-        });
-
-        // Store payment record
-        await storage.createPayment({
-          customer_id: ride.customer_id,
-          amount: parseFloat(amount).toString(),
-          payment_method: "card",
-          reference_id: paymentResult.paymentId || "",
-          status: "completed",
-          notes: `Yah Ride Payment - ${ride.ride_type}`,
-          ride_id: rideId,
-        });
-
-        // Calculate payment split (driver gets 80%, CEO gets 20%)
-        const totalAmount = parseFloat(amount);
-        const driverAmount = totalAmount * 0.8;
-        const ceoAmount = totalAmount * 0.2;
-
-        try {
-          // Get driver beneficiary for automatic payout
-          const driverBeneficiary = await storage.getRapydBeneficiaryByDriver(
-            request.driver_id,
-          );
-
-          if (driverBeneficiary) {
-            const { processAutomaticPayouts } = await import("./rapyd");
-
-            // Trigger automatic payouts to driver and CEO
-            await processAutomaticPayouts({
-              rideId,
-              driverAmount,
-              ceoAmount,
-              currency: "USD",
-              driverBeneficiaryId: driverBeneficiary.beneficiary_id,
-              ceoBeneficiaryId: "ceo_beneficiary_id", // TODO: Get from config
-            });
-
-            // Store payment split record
-            await storage.createPaymentSplit({
-              payment_id: parseInt(paymentResult.paymentId || "0"),
-              ride_id: rideId,
-              driver_id: request.driver_id,
-              total_amount: totalAmount.toString(),
-              driver_amount: driverAmount.toString(),
-              ceo_amount: ceoAmount.toString(),
-              driver_beneficiary_id: driverBeneficiary.beneficiary_id,
-              ceo_beneficiary_id: "ceo_beneficiary_id",
-              split_status: "completed",
-              rapyd_payment_id: paymentResult.paymentId,
-            });
-          }
-        } catch (error: any) {
-          console.error("Error processing automatic payouts:", error);
-          // Payment succeeded but payout failed - this should be handled by retry logic
-        }
-
-        // Get updated ride with driver info
-        const updatedRide = await storage.getRide(rideId);
-        let driver = null;
-        if (updatedRide?.driver_id) {
-          driver = await storage.getDriver(updatedRide.driver_id);
-        }
-
-        res.json({
-          success: true,
-          ride: { ...updatedRide, driver },
-          payment: {
-            id: paymentResult.paymentId,
-            status: "completed",
-          },
-        });
-      } else {
-        res.status(400).json({
-          success: false,
-          message: paymentResult.error || "Payment processing failed",
-        });
-      }
-    } catch (error: any) {
-      console.error("Payment processing error:", error);
-      res.status(500).json({ message: "Payment processing failed" });
-    }
-  });
-
-  app.post("/api/payments/refund", async (req, res) => {
-    try {
-      const { paymentId, amount, reason } = req.body;
-
-      if (!paymentId || !amount || !reason) {
-        return res
-          .status(400)
-          .json({ message: "Payment ID, amount, and reason are required" });
-      }
-
-      const refundResult = await wiseService.processRefund(
-        paymentId,
-        parseFloat(amount),
-        reason,
-      );
-
-      if (refundResult.success) {
-        res.json({
-          success: true,
-          refund: {
-            id: refundResult.paymentId,
-            status: "completed",
-          },
-        });
-      } else {
-        res.status(400).json({
-          success: false,
-          message: refundResult.error || "Refund processing failed",
-        });
-      }
-    } catch (error: any) {
-      console.error("Refund processing error:", error);
-      res.status(500).json({ message: "Refund processing failed" });
     }
   });
 
@@ -517,15 +438,211 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/rides/:id/cancel", async (req, res) => {
     try {
       const { id } = req.params;
-      const { reason } = z.object({ reason: z.string() }).parse(req.body);
+      const { reason = "", attachments = [] } = z
+        .object({ reason: z.string().optional(), attachments: z.array(z.string()).optional() })
+        .parse(req.body ?? {});
 
-      const ride = await storage.cancelRide(id, reason);
-      res.json({ ride });
+      const ride = await storage.getRide(id);
+      if (!ride) return res.status(404).json({ message: 'Ride not found' });
+
+      // Optionally store a driver report (attachments ignored for now)
+      try {
+        await storage.createDriverReport({
+          ride_id: id as any,
+          description: reason as any,
+          images: (attachments as any) || [],
+        } as any);
+      } catch {}
+
+      // Compute CEO invisible earning based on ride_types
+      const { data: rate } = await (await import('@supabase/supabase-js')).createClient(VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        .from('ride_types')
+        .select('*, ride_categories:ride_categories(*)')
+        .eq('title', (ride as any).ride_type)
+        .limit(1)
+        .maybeSingle();
+
+      const minutes = Number((ride as any).duration_minutes) || 0;
+      const miles = Number((ride as any).estimated_distance) || 0;
+      const people = Number((ride as any).rider_count) || 1;
+      const pets = Number((ride as any).pet_count) || 0;
+      const carsUsed = 1; // simplified; could derive from people if needed
+
+      let totalFare = Number.parseFloat(String((ride as any).total_fare || 0)) || 0;
+      let ceoInvisible = 0;
+      if (rate && (rate as any).ride_categories) {
+        const cat: any = (rate as any).ride_categories;
+        const perDriverVisible = (cat.driver_rate_per_mile || 0) * miles + (cat.min_tip ?? 5);
+        const driversTotal = perDriverVisible * carsUsed;
+        ceoInvisible = ((rate as any).ceo_rate_per_minute || 0) * minutes * carsUsed;
+        const extras = (cat.per_person_fee || 0) * people + (cat.per_pet_fee || 0) * pets;
+        const price = Math.max(0, driversTotal + ceoInvisible + extras);
+        if (!totalFare || totalFare <= 0) totalFare = price;
+      }
+
+      // Base refund before fees
+      let refundAmountCents = Math.max(0, Math.round((totalFare - ceoInvisible) * 100));
+
+      // If paid via Stripe, issue partial refund using latest charge of payment intent
+      const payment = await storage.getPaymentByRideId(id);
+      if (payment && (payment as any).reference_id?.startsWith('pi_') && refundAmountCents > 0) {
+        const Stripe = (await import('stripe')).default;
+        const { STRIPE_SECRET_KEY } = await import('./config');
+        const stripe = new Stripe(STRIPE_SECRET_KEY as any);
+        const pi = await stripe.paymentIntents.retrieve((payment as any).reference_id, { expand: ['latest_charge.balance_transaction'] });
+        const latestCharge: any = pi.latest_charge as any;
+        const chargeId = latestCharge?.id as string | undefined;
+        // Determine Stripe processing fee from balance transaction
+        let stripeFeeCents = 0;
+        try {
+          if (latestCharge?.balance_transaction) {
+            const bt: any = latestCharge.balance_transaction;
+            stripeFeeCents = Math.max(0, Number(bt.fee || 0));
+          } else if (chargeId) {
+            const charge = await stripe.charges.retrieve(chargeId, { expand: ['balance_transaction'] });
+            stripeFeeCents = Math.max(0, Number((charge as any).balance_transaction?.fee || 0));
+          }
+        } catch (_) {}
+        // Subtract Stripe processing fee from refund
+        refundAmountCents = Math.max(0, refundAmountCents - stripeFeeCents);
+        if (chargeId) {
+          try {
+            const refund = await stripe.refunds.create({ charge: chargeId, amount: refundAmountCents, reason: 'requested_by_customer', metadata: { rideId: id } });
+            // Log refund in payments table
+            // try {
+            //   await storage.createPayment({
+            //     customer_id: (ride as any).customer_id,
+            //     amount: String(-(refundAmountCents / 100)),
+            //     payment_method: 'stripe_refund',
+            //     reference_id: refund.id,
+            //     status: 'refunded',
+            //     ride_id: id,
+            //     notes: 'Customer initiated refund (cancel ride)'
+            //   } as any);
+            // } catch (logErr) {
+            //   console.warn('Payment log (refund) error:', logErr);
+            // }
+            // Log to refund_logs table (Supabase)
+            try {
+              const { supabase } = await import('./db');
+              await supabase.from('refund_logs').insert({
+                ride_id: id,
+                customer_id: (ride as any).customer_id,
+                amount: refundAmountCents / 100,
+                reference_id: refund.id,
+                status: refund.status,
+                note: reason || 'customer_cancelled'
+              } as any);
+            } catch (rlErr) {
+              console.warn('refund_logs insert failed:', rlErr);
+            }
+          } catch (e) {
+            console.error('Stripe refund error:', e);
+          }
+        }
+      }
+
+      const cancelled = await storage.cancelRide(id, reason || 'customer_cancelled');
+      const requests = await storage.getRideRequests(id);
+      await Promise.all(requests.map(rr => storage.updateRideRequest(rr.id, { status: 'bid_dismissed' } as any)));
+
+      res.json({ ride: cancelled, refundAmountCents });
     } catch (error: any) {
       console.error("Ride cancellation error:", error);
-      res
-        .status(400)
-        .json({ message: error.message || "Failed to cancel ride" });
+      res.status(400).json({ message: error.message || "Failed to cancel ride" });
+    }
+  });
+
+  // Refund estimate (no refund performed)
+  app.get('/api/rides/:id/refund-quote', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const ride = await storage.getRide(id);
+      if (!ride) return res.status(404).json({ message: 'Ride not found' });
+
+      const { supabase } = await import('./db');
+      const { data: rate } = await supabase
+        .from('ride_types')
+        .select('*, ride_categories:ride_categories(*)')
+        .eq('title', (ride as any).ride_type)
+        .limit(1)
+        .maybeSingle();
+
+      const minutes = Number((ride as any).duration_minutes) || 0;
+      const miles = Number((ride as any).estimated_distance) || 0;
+      const people = Number((ride as any).rider_count) || 1;
+      const pets = Number((ride as any).pet_count) || 0;
+      const carsUsed = 1;
+
+      let totalFare = Number.parseFloat(String((ride as any).total_fare || 0)) || 0;
+      let ceoInvisible = 0;
+      if (rate && (rate as any).ride_categories) {
+        const cat: any = (rate as any).ride_categories;
+        const perDriverVisible = (cat.driver_rate_per_mile || 0) * miles + (cat.min_tip ?? 5);
+        const driversTotal = perDriverVisible * carsUsed;
+        ceoInvisible = ((rate as any).ceo_rate_per_minute || 0) * minutes * carsUsed;
+        const extras = (cat.per_person_fee || 0) * people + (cat.per_pet_fee || 0) * pets;
+        const price = Math.max(0, driversTotal + ceoInvisible + extras);
+        if (!totalFare || totalFare <= 0) totalFare = price;
+      }
+
+      // Determine Stripe processing fee from original payment (if exists)
+      let stripeFeeCents = 0;
+      try {
+        const payment = await storage.getPaymentByRideId(id);
+        if (payment && (payment as any).reference_id?.startsWith('pi_')) {
+          const Stripe = (await import('stripe')).default;
+          const { STRIPE_SECRET_KEY } = await import('./config');
+          const stripe = new Stripe(STRIPE_SECRET_KEY as any);
+          const pi = await stripe.paymentIntents.retrieve((payment as any).reference_id, { expand: ['latest_charge.balance_transaction'] });
+          const latestCharge: any = pi.latest_charge as any;
+          if (latestCharge?.balance_transaction) {
+            const bt: any = latestCharge.balance_transaction;
+            stripeFeeCents = Math.max(0, Number(bt.fee || 0));
+          } else if ((latestCharge as any)?.id) {
+            const charge = await stripe.charges.retrieve((latestCharge as any).id, { expand: ['balance_transaction'] });
+            stripeFeeCents = Math.max(0, Number((charge as any).balance_transaction?.fee || 0));
+          }
+        }
+      } catch (e) {
+        console.warn('Refund quote: unable to compute stripe fee', e);
+      }
+
+      const refundAmountCents = Math.max(0, Math.round((totalFare - ceoInvisible) * 100) - stripeFeeCents);
+      return res.json({ amountCents: refundAmountCents, totalFare, ceoInvisible, stripeFeeCents });
+    } catch (err: any) {
+      console.error('Refund quote error:', err);
+      return res.status(500).json({ message: 'Failed to compute refund quote' });
+    }
+  });
+
+  // Allow customer to cancel a refund when possible (Stripe supports cancel only for certain statuses)
+  app.post('/api/refunds/:refundId/cancel', async (req, res) => {
+    try {
+      const { refundId } = req.params;
+      const Stripe = (await import('stripe')).default;
+      const { STRIPE_SECRET_KEY } = await import('./config');
+      const stripe = new Stripe(STRIPE_SECRET_KEY as any);
+
+      const refund = await stripe.refunds.retrieve(refundId);
+      // Attempt cancel (will fail if already succeeded or not cancelable)
+      let result = refund;
+      try {
+        result = await stripe.refunds.cancel(refundId);
+      } catch (e: any) {
+        // If not cancelable, surface current status
+        return res.status(400).json({ message: e?.message || 'Refund cannot be canceled', status: refund.status });
+      }
+
+      // Update payments log row if we stored one
+      try {
+        const p = await storage.updatePaymentByReference?.(refundId as any, { status: 'canceled' } as any);
+      } catch {}
+
+      return res.json({ refund: result });
+    } catch (error: any) {
+      console.error('Refund cancel error:', error);
+      return res.status(500).json({ message: 'Failed to cancel refund' });
     }
   });
 
@@ -539,12 +656,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
         .parse(req.body);
 
-      const ride = await storage.updateRide(id, {
+      const ride = await storage.getRide(id);
+      if (!ride) return res.status(404).json({ message: 'Ride not found' });
+
+      // Store a driver rating entry independent of ride record
+      const ratingRow = await storage.createDriverRating({
+        ride_id: id,
+        driver_id: (ride as any).driver_id,
+        customer_id: (ride as any).customer_id,
+        rating,
+        emoji,
+      });
+
+      // Optionally also keep simple rating fields on ride for quick access
+      const updatedRide = await storage.updateRide(id, {
         customer_rating: rating,
         customer_rating_emoji: emoji,
       });
 
-      res.json({ ride });
+      res.json({ ride: updatedRide, driverRating: ratingRow });
     } catch (error: any) {
       console.error("Ride rating error:", error);
       res.status(400).json({ message: error.message || "Failed to rate ride" });
@@ -1229,309 +1359,5 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
-  // Rapyd payment integration routes
-
-  // Webhook endpoint for Rapyd payment status updates
-  app.post("/api/rapyd/webhook", async (req, res) => {
-    try {
-      const signature = req.headers["signature"] as string;
-      const salt = req.headers["salt"] as string;
-      const timestamp = req.headers["timestamp"] as string;
-      const body = JSON.stringify(req.body);
-
-      // Verify webhook signature
-      const { rapydClient } = await import("./rapyd");
-      const isValid = rapydClient.verifyWebhookSignature(
-        body,
-        signature,
-        salt,
-        timestamp,
-      );
-
-      if (!isValid) {
-        console.error("Invalid Rapyd webhook signature");
-        return res.status(401).json({ error: "Invalid signature" });
-      }
-
-      const { type, data } = req.body;
-
-      // Handle different webhook events
-      switch (type) {
-        case "PAYMENT_COMPLETED":
-          await handlePaymentCompleted(data);
-          break;
-        case "PAYMENT_FAILED":
-          await handlePaymentFailed(data);
-          break;
-        case "PAYOUT_COMPLETED":
-          await handlePayoutCompleted(data);
-          break;
-        case "PAYOUT_FAILED":
-          await handlePayoutFailed(data);
-          break;
-        default:
-          console.log(`Unhandled webhook event: ${type}`);
-      }
-
-      res.json({ status: "received" });
-    } catch (error: any) {
-      console.error("Rapyd webhook error:", error);
-      res.status(500).json({ error: "Webhook processing failed" });
-    }
-  });
-
-  // Create driver beneficiary
-  app.post("/api/rapyd/beneficiary/driver", async (req, res) => {
-    try {
-      const {
-        driverId,
-        firstName,
-        lastName,
-        email,
-        phone,
-        country,
-        currency,
-        bankDetails,
-      } = req.body;
-
-      if (
-        !driverId ||
-        !firstName ||
-        !lastName ||
-        !email ||
-        !phone ||
-        !country ||
-        !currency ||
-        !bankDetails
-      ) {
-        return res
-          .status(400)
-          .json({ error: "Missing required beneficiary data" });
-      }
-
-      const { createDriverBeneficiary } = await import("./rapyd");
-      const rapydResponse = await createDriverBeneficiary({
-        driverId,
-        firstName,
-        lastName,
-        email,
-        phone,
-        country,
-        currency,
-        bankDetails,
-      });
-
-      // Store beneficiary info in database
-      const beneficiaryData = {
-        driver_id: driverId,
-        beneficiary_id: rapydResponse.data.id,
-        beneficiary_type: "driver" as const,
-        payment_method: "bank_transfer",
-        country,
-        currency,
-      };
-
-      const beneficiary = await storage.createRapydBeneficiary(beneficiaryData);
-
-      res.json({ beneficiary, rapydResponse: rapydResponse.data });
-    } catch (error: any) {
-      console.error("Failed to create driver beneficiary:", error);
-      res.status(500).json({ error: "Failed to create beneficiary" });
-    }
-  });
-
-  // Process ride payment with split
-  app.post("/api/rapyd/payment/split", async (req, res) => {
-    try {
-      const {
-        rideId,
-        totalAmount,
-        currency,
-        driverAmount,
-        ceoAmount,
-        paymentMethod,
-        customerId,
-      } = req.body;
-
-      if (
-        !rideId ||
-        !totalAmount ||
-        !currency ||
-        !driverAmount ||
-        !ceoAmount ||
-        !paymentMethod ||
-        !customerId
-      ) {
-        return res.status(400).json({ error: "Missing required payment data" });
-      }
-
-      // Get driver and CEO beneficiaries
-      const ride = await storage.getRide(rideId);
-      if (!ride || !ride.driver_id) {
-        return res.status(404).json({ error: "Ride or driver not found" });
-      }
-
-      const driverBeneficiary = await storage.getRapydBeneficiaryByDriver(
-        ride.driver_id,
-      );
-      if (!driverBeneficiary) {
-        return res.status(404).json({ error: "Driver beneficiary not found" });
-      }
-
-      // Hardcoded CEO beneficiary ID (should be stored in config/database)
-      const ceoBeneficiaryId = "ceo_beneficiary_id"; // TODO: Get from config
-
-      const { processRidePayment, processAutomaticPayouts } = await import(
-        "./rapyd"
-      );
-
-      // First collect payment to platform
-      const paymentResponse = await processRidePayment({
-        rideId,
-        totalAmount,
-        currency,
-        paymentMethod,
-        customerId,
-      });
-
-      if (paymentResponse.status?.status === "ACT") {
-        // Payment successful - trigger automatic payouts
-        await processAutomaticPayouts({
-          rideId,
-          driverAmount,
-          ceoAmount,
-          currency,
-          driverBeneficiaryId: driverBeneficiary.beneficiary_id,
-          ceoBeneficiaryId,
-        });
-      }
-
-      // Store payment split info in database
-      const splitData = {
-        payment_id: paymentResponse.data.id,
-        ride_id: rideId,
-        driver_id: ride.driver_id,
-        total_amount: totalAmount.toString(),
-        driver_amount: driverAmount.toString(),
-        ceo_amount: ceoAmount.toString(),
-        driver_beneficiary_id: driverBeneficiary.beneficiary_id,
-        ceo_beneficiary_id: ceoBeneficiaryId,
-        split_status: "pending" as const,
-        rapyd_payment_id: paymentResponse.data?.id,
-      };
-
-      const paymentSplit = await storage.createPaymentSplit(splitData);
-
-      res.json({ paymentSplit, rapydResponse: paymentResponse.data });
-    } catch (error: any) {
-      console.error("Failed to process split payment:", error);
-      res.status(500).json({ error: "Failed to process payment" });
-    }
-  });
-
-  // Create instant payout for driver
-  app.post("/api/rapyd/payout/instant", async (req, res) => {
-    try {
-      const { driverId, amount, currency, description } = req.body;
-
-      if (!driverId || !amount || !currency) {
-        return res.status(400).json({ error: "Missing required payout data" });
-      }
-
-      const driverBeneficiary =
-        await storage.getRapydBeneficiaryByDriver(driverId);
-      if (!driverBeneficiary) {
-        return res.status(404).json({ error: "Driver beneficiary not found" });
-      }
-
-      const { processInstantPayout } = await import("./rapyd");
-      const payoutResponse = await processInstantPayout({
-        driverId,
-        amount,
-        currency,
-        beneficiaryId: driverBeneficiary.beneficiary_id,
-        description,
-      });
-
-      // Store payout info in database
-      const payoutData = {
-        driver_id: driverId,
-        amount: amount.toString(),
-        currency,
-        beneficiary_id: driverBeneficiary.beneficiary_id,
-        payout_type: "instant" as const,
-        status: "pending" as const,
-        rapyd_payout_id: payoutResponse.data.id,
-        description,
-      };
-
-      const driverPayout = await storage.createDriverPayout(payoutData);
-
-      res.json({ payout: driverPayout, rapydResponse: payoutResponse.data });
-    } catch (error: any) {
-      console.error("Failed to create instant payout:", error);
-      res.status(500).json({ error: "Failed to create payout" });
-    }
-  });
-
-  // Helper functions for webhook event handling
-  async function handlePaymentCompleted(data: any) {
-    try {
-      const paymentSplit = await storage.getPaymentSplitByPayment(data.id);
-      if (paymentSplit) {
-        await storage.updatePaymentSplit(paymentSplit.id, {
-          split_status: "completed",
-        });
-      }
-    } catch (error) {
-      console.error("Error handling payment completed:", error);
-    }
-  }
-
-  async function handlePaymentFailed(data: any) {
-    try {
-      const paymentSplit = await storage.getPaymentSplitByPayment(data.id);
-      if (paymentSplit) {
-        await storage.updatePaymentSplit(paymentSplit.id, {
-          split_status: "failed",
-        });
-      }
-    } catch (error) {
-      console.error("Error handling payment failed:", error);
-    }
-  }
-
-  async function handlePayoutCompleted(data: any) {
-    try {
-      // Find payout by rapyd_payout_id and update status
-      const payouts = await storage.getPendingPayouts();
-      const payout = payouts.find((p) => p.rapyd_payout_id === data.id);
-      if (payout) {
-        await storage.updateDriverPayout(payout.id, {
-          status: "completed",
-          completed_at: new Date(),
-        });
-      }
-    } catch (error) {
-      console.error("Error handling payout completed:", error);
-    }
-  }
-
-  async function handlePayoutFailed(data: any) {
-    try {
-      // Find payout by rapyd_payout_id and update status
-      const payouts = await storage.getPendingPayouts();
-      const payout = payouts.find((p) => p.rapyd_payout_id === data.id);
-      if (payout) {
-        await storage.updateDriverPayout(payout.id, {
-          status: "failed",
-          failed_reason: data.failure_reason || "Unknown error",
-        });
-      }
-    } catch (error) {
-      console.error("Error handling payout failed:", error);
-    }
-  }
-
   return httpServer;
 }

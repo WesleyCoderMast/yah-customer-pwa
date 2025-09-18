@@ -154,11 +154,11 @@ function LocationSelectionView({ bookingData, setBookingData, calculateVehicleCo
   };
 
   // Update distance when locations change
-  useEffect(() => {
-    if (bookingData.pickupLocation && bookingData.dropoffLocation) {
-      calculateRouteDistance();
-    }
-  }, [bookingData.pickupLat, bookingData.pickupLng, bookingData.dropoffLat, bookingData.dropoffLng]);
+  // useEffect(() => {
+  //   if (bookingData.pickupLocation && bookingData.dropoffLocation) {
+  //     calculateRouteDistance();
+  //   }
+  // }, [bookingData.pickupLat, bookingData.pickupLng, bookingData.dropoffLat, bookingData.dropoffLng]);
 
   return (
     <div className="space-y-6">
@@ -306,7 +306,7 @@ function LocationSelectionView({ bookingData, setBookingData, calculateVehicleCo
                     <i className="fas fa-dollar-sign text-blue-400 text-sm mr-2"></i>
                     <p className="text-slate-400 text-xs font-medium">Price</p>
                   </div>
-                  <p className="text-white font-bold text-sm">${routePrice}</p>
+                  <p className="text-white font-bold text-sm">${supabasePrice}</p>
                   <p className="text-slate-400 text-xs">estimate</p>
                 </div>
               </div>

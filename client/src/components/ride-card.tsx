@@ -135,19 +135,19 @@ export default function RideCard({ ride, isActive }: RideCardProps) {
 
         {/* Trip Route */}
         <div className="mb-4">
-          <div className="flex items-start space-x-4">
-            <div className="flex flex-col items-center mt-1">
+          <div className="grid grid-cols-[20px_1fr] gap-x-4">
+            <div className="flex flex-col items-center pt-1">
               <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-              <div className="w-0.5 h-8 bg-gray-500 my-2"></div>
+              <div className="w-0.5 flex-1 bg-gray-500 my-2"></div>
               <div className="w-3 h-3 bg-red-500 rounded-full"></div>
             </div>
-            <div className="flex-1 space-y-4">
-              <div>
-                <p className="font-semibold text-base text-green-400 mb-1">From</p>
+            <div className="flex flex-col justify-between min-h-[64px]">
+              <div className="pb-2">
+                <p className="font-semibold text-base text-green-400 mb-1 leading-none">From</p>
                 <p className="text-base text-gray-300 leading-relaxed">{ride.pickup}</p>
               </div>
-              <div>
-                <p className="font-semibold text-base text-red-400 mb-1">To</p>
+              <div className="pt-2">
+                <p className="font-semibold text-base text-red-400 mb-1 leading-none">To</p>
                 <p className="text-base text-gray-300 leading-relaxed">{ride.dropoff}</p>
               </div>
             </div>

@@ -89,6 +89,7 @@ export interface IStorage {
   // Payment operations
   createPayment(payment: InsertPayment): Promise<Payment>;
   getPayment(id: string): Promise<Payment | undefined>;
+  getPaymentByRideId(rideId: string): Promise<Payment | undefined>;
   updatePayment(id: string, updates: Partial<Payment>): Promise<Payment>;
   getUserPayments(customerId: string): Promise<Payment[]>;
   
@@ -128,6 +129,14 @@ export interface IStorage {
   getPaymentSplit(id: string): Promise<PaymentSplit | undefined>;
   getPaymentSplitByPayment(paymentId: number): Promise<PaymentSplit | undefined>;
   updatePaymentSplit(id: string, updates: Partial<PaymentSplit>): Promise<PaymentSplit>;
+  // Driver rating operations
+  createDriverRating(rating: {
+    ride_id: string;
+    driver_id: string;
+    customer_id: string;
+    rating: number; // 1 or 2
+    emoji?: string;
+  }): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -516,6 +525,25 @@ export class DatabaseStorage implements IStorage {
       return undefined;
     }
     return data;
+  }
+
+  async getPaymentByRideId(rideId: string): Promise<Payment | undefined> {
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
+    }
+    const { data, error } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('ride_id', rideId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error fetching payment by ride:', error);
+      return undefined;
+    }
+    return data || undefined;
   }
 
   async updatePayment(id: string, updates: Partial<Payment>): Promise<Payment> {
@@ -1390,6 +1418,30 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Failed to update payment split: ${error.message}`);
     }
     
+    return data;
+  }
+
+  // Driver rating operations
+  async createDriverRating(rating: { ride_id: string; driver_id: string; customer_id: string; rating: number; emoji?: string; }): Promise<any> {
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
+    }
+    const { data, error } = await supabase
+      .from('driver_ratings')
+      .insert({
+        ride_id: rating.ride_id,
+        driver_id: rating.driver_id,
+        customer_id: rating.customer_id,
+        rating: rating.rating,
+        emoji: rating.emoji,
+        created_at: new Date().toISOString(),
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to create driver rating: ${error.message}`);
+    }
     return data;
   }
 }

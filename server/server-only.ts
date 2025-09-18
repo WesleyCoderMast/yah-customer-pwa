@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { PORT } from "./config";
+import { handleStripeWebhook } from "./stripeWebhook";
 
 const app = express();
 
@@ -18,6 +19,8 @@ app.use((req, res, next) => {
   }
 });
 
+// Register Stripe webhook BEFORE json parsing, using raw body
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -63,7 +66,7 @@ app.use((req, res, next) => {
   });
 
   // Backend server only - no frontend serving
-  const port = parseInt(PORT || '8000', 10);
+  const port = PORT || '8000';
   server.listen({
     port,
     host: "0.0.0.0",

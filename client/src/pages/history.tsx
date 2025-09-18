@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import BottomNavigation from "@/components/bottom-navigation";
 import { Link } from "wouter";
 
@@ -36,9 +37,22 @@ export default function History() {
     }
   };
 
-  const { data: rides, isLoading } = useQuery<Ride[]>({
-    queryKey: ['/api/rides/history', user?.id],
+  const { data: paymentsData, isLoading } = useQuery({
+    queryKey: ['/api/payments', user?.id],
+    queryFn: async () => {
+      const res = await apiRequest('GET', `/api/payments?customerId=${user?.id}`);
+      return await res.json();
+    },
     enabled: !!user?.id,
+  });
+
+  const payments = (paymentsData as any)?.payments || [];
+  const refunds = (paymentsData as any)?.refunds || [];
+
+  const cancelRefundMutation = useMutation({
+    mutationFn: async (refundId: string) => {
+      return await apiRequest('POST', `/api/refunds/${refundId}/cancel`);
+    },
   });
 
   return (
@@ -53,8 +67,8 @@ export default function History() {
               </button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold text-primary">My Rides</h1>
-              <p className="text-sm text-muted-foreground">Track your journeys</p>
+              <h1 className="text-xl font-bold text-primary">Payments & Refunds</h1>
+              <p className="text-sm text-muted-foreground">Your transaction history</p>
             </div>
           </div>
           <button className="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors">
@@ -70,12 +84,12 @@ export default function History() {
           <div className="driver-card p-4">
             <div className="flex items-center space-x-2 mb-2">
               <i className="fas fa-check-circle text-accent"></i>
-              <span className="text-sm font-medium text-primary">Completed</span>
+              <span className="text-sm font-medium text-primary">Payments</span>
             </div>
             <div className="text-2xl font-bold text-primary">
-              {rides?.filter(ride => ride.status === 'completed').length || 0}
+              {payments.length}
             </div>
-            <div className="text-xs text-muted-foreground">Total rides</div>
+            <div className="text-xs text-muted-foreground">Total records</div>
           </div>
           
           <div className="driver-card p-4">
@@ -85,11 +99,7 @@ export default function History() {
             </div>
             <div className="text-2xl font-bold text-accent">
               ${(
-                rides?.reduce((sum, ride) => {
-                  const raw = ride.total_fare;
-                  const num = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '0'));
-                  return sum + (Number.isFinite(num) ? num : 0);
-                }, 0) || 0
+                (payments as any[]).reduce((sum, p) => sum + Math.max(0, parseFloat(p.amount || '0')), 0)
               ).toFixed(2)}
             </div>
             <div className="text-xs text-muted-foreground">All time</div>
@@ -104,7 +114,7 @@ export default function History() {
           </div>
         </div>
 
-        {/* Rides List */}
+        {/* Transactions */}
         {isLoading ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
@@ -123,78 +133,46 @@ export default function History() {
               </div>
             ))}
           </div>
-        ) : rides && rides.length > 0 ? (
+        ) : payments && payments.length > 0 ? (
           <div className="space-y-4">
-            {rides.map((ride) => (
-              <div key={ride.id} className="driver-card p-4">
+            {payments.map((p: any) => (
+              <div key={p.id || p.reference_id} className="driver-card p-4">
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <div className="flex items-center space-x-2 mb-1">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        ride.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        ride.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                        'bg-blue-100 text-blue-800'
+                        parseFloat(p.amount) >= 0 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                       }`}>
-                        {ride.status === 'completed' ? 'Completed' :
-                         ride.status === 'cancelled' ? 'Cancelled' : 'In Progress'}
+                        {parseFloat(p.amount) >= 0 ? 'Payment' : 'Refund'}
                       </span>
                       <span className="text-sm text-muted-foreground">
-                        {ride.ride_type}
+                        {new Date(p.created_at || Date.now()).toLocaleString()}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(ride.created_at).toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
+                    <p className="text-xs text-muted-foreground">Ref: {p.reference_id || '—'}</p>
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold text-accent">
-                      {(() => {
-                        const raw = ride.total_fare;
-                        const num = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '0'));
-                        return `$${Number.isFinite(num) ? num.toFixed(2) : '0.00'}`;
-                      })()}
+                      {parseFloat(p.amount) >= 0 ? `+$${parseFloat(p.amount).toFixed(2)}` : `-$${Math.abs(parseFloat(p.amount)).toFixed(2)}`}
                     </div>
                   </div>
                 </div>
-                
-                <div className="space-y-2">
-                  <div className="flex items-start space-x-3">
-                    <div className="flex flex-col items-center mt-1">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <div className="w-0.5 h-4 bg-border my-1"></div>
-                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-primary">{ride.pickup}</p>
-                      <p className="text-sm text-muted-foreground">{ride.dropoff}</p>
-                    </div>
+
+                {parseFloat(p.amount) < 0 && (
+                  <div className="mt-3 pt-3 border-t border-border flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Status: {p.status || 'refunded'}</span>
+                    {p.reference_id && (
+                      <button
+                        onClick={() => cancelRefundMutation.mutate(p.reference_id)}
+                        className="text-muted-foreground hover:text-primary text-sm"
+                        disabled={cancelRefundMutation.isPending}
+                      >
+                        <i className="fas fa-ban mr-1"></i>
+                        Cancel Refund
+                      </button>
+                    )}
                   </div>
-                  <div className="flex items-start justify-between text-xs text-muted-foreground mt-2 gap-2">
-                    <div className="flex items-center flex-shrink-0">
-                      <i className="fas fa-user-check mr-1 text-yah-gold"></i>
-                      <span className="font-medium">Driver:</span>
-                    </div>
-                    <span className="text-right flex-1 min-w-0">
-                      {getDriverPreferenceText(ride.person_preference_id ?? null)}
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="mt-3 pt-3 border-t border-border flex justify-between items-center">
-                  <button className="text-primary hover:text-primary/80 text-sm font-medium">
-                    View Details
-                  </button>
-                  <button className="text-muted-foreground hover:text-primary text-sm">
-                    <i className="fas fa-redo mr-1"></i>
-                    Book Again
-                  </button>
-                </div>
+                )}
               </div>
             ))}
           </div>
@@ -204,12 +182,12 @@ export default function History() {
             <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
               <i className="fas fa-car text-2xl text-muted-foreground"></i>
             </div>
-            <h3 className="text-lg font-semibold text-primary mb-2">No Active Rides</h3>
-            <p className="text-muted-foreground mb-6">Ready for your next Yah™ adventure?</p>
+            <h3 className="text-lg font-semibold text-primary mb-2">No Transactions</h3>
+            <p className="text-muted-foreground mb-6">Your payments and refunds will appear here.</p>
             <Link href="/">
               <button className="bg-primary text-primary-foreground px-6 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors">
                 <i className="fas fa-crown mr-2"></i>
-                Book Your First Ride
+                Book a Ride
               </button>
             </Link>
           </div>

@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { VITE_API_BASE_URL } from "./config";
+import { supabase } from "./supabase";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -15,10 +16,17 @@ export async function apiRequest(
 ): Promise<Response> {
   // Ensure URL is absolute by prepending the API base URL if it's relative
   const fullUrl = url.startsWith('http') ? url : `${VITE_API_BASE_URL}${url}`;
-  
+
+  // Get Supabase session token
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+
+  const headers: Record<string, string> = data ? { "Content-Type": "application/json" } : {};
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
   const res = await fetch(fullUrl, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -36,13 +44,21 @@ export const getQueryFn: <T>(options: {
     const url = queryKey.join("/") as string;
     // Ensure URL is absolute by prepending the API base URL if it's relative
     const fullUrl = url.startsWith('http') ? url : `${VITE_API_BASE_URL}${url}`;
-    
+
+    // Get Supabase session token
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+
+    const headers: Record<string, string> = {};
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
     const res = await fetch(fullUrl, {
       credentials: "include",
+      headers,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+      return null as unknown as T;
     }
 
     await throwIfResNotOk(res);

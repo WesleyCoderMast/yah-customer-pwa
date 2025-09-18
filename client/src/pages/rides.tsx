@@ -36,6 +36,19 @@ export default function Rides() {
     ['completed', 'cancelled'].includes(ride.status)
   );
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+            <i className="fas fa-car text-primary-foreground text-2xl"></i>
+          </div>
+          <p className="text-primary font-semibold">Loading your rides...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Header */}
@@ -156,7 +169,11 @@ export default function Rides() {
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-accent">
-                    ${completedRides.reduce((acc: number, ride: Ride) => acc + parseFloat(ride.total_fare || '0'), 0).toFixed(0)}
+                    ${completedRides.reduce(
+                      (acc: number, ride: Ride) =>
+                        acc + parseFloat(typeof ride.total_fare === 'string' ? ride.total_fare : '0'),
+                      0
+                    ).toFixed(0)}
                   </div>
                   <div className="text-sm text-muted-foreground">Total Spent</div>
                 </div>
