@@ -7,12 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import DriverBids from "@/components/driver-bids";
 import type { Ride } from "@shared/schema";
-import { VITE_API_BASE_URL } from "@/lib/config";
+import { VITE_API_BASE_URL, VITE_STRIPE_PUBLISHABLE_KEY } from "@/lib/config";
 import { supabase } from "@/lib/supabase";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+
+const stripePromise = loadStripe(VITE_STRIPE_PUBLISHABLE_KEY);
 
 export default function RideTracking() {
   const [match, params] = useRoute("/ride/:rideId");
@@ -27,6 +32,13 @@ export default function RideTracking() {
   const [rating, setRating] = useState<1 | 2 | null>(null);
   const [ratingEmoji, setRatingEmoji] = useState("");
   const [showPayment, setShowPayment] = useState(false);
+  const [showTip, setShowTip] = useState(false);
+  const [tipAmount, setTipAmount] = useState<string>("");
+  const [tipBounds, setTipBounds] = useState<{ min: number; max: number } | null>(null);
+  const [showTipPaymentForm, setShowTipPaymentForm] = useState(false);
+  const [tipPaymentClientSecret, setTipPaymentClientSecret] = useState<string>("");
+  const [isSubmittingTip, setIsSubmittingTip] = useState(false);
+  const [isFinishingRide, setIsFinishingRide] = useState(false);
 
   const { data: rideData, isLoading } = useQuery({
     queryKey: ['/api/rides', params?.rideId || ''],
@@ -58,17 +70,18 @@ export default function RideTracking() {
 
   const rateRideMutation = useMutation({
     mutationFn: async (ratingData: { rating: number; emoji?: string }) => {
+      // Only submit the rating, don't finish the ride yet
       await apiRequest('POST', `/api/rides/${params?.rideId}/rate`, ratingData);
-      await apiRequest('POST', `/api/rides/${params?.rideId}/finish`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
-      queryClient.invalidateQueries({ queryKey: ['/api/rides'] });
-      toast({ title: 'Ride Completed', description: 'Thanks for your feedback!' });
+      toast({ title: 'Rating Submitted', description: 'Thank you for your feedback!' });
       setShowRating(false);
+      // Show tip dialog after rating is submitted
+      openTipDialog();
     },
     onError: (error: any) => {
-      toast({ title: 'Unable to complete ride', description: error.message, variant: 'destructive' });
+      toast({ title: 'Unable to submit rating', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -158,12 +171,26 @@ export default function RideTracking() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const paymentSuccess = urlParams.get('payment_success');
+    const tipPaymentSuccess = urlParams.get('tip_payment_success');
     const pspReference = urlParams.get('psp_reference');
     const resultCode = urlParams.get('result_code');
 
     if (paymentSuccess === 'true' && pspReference && resultCode) {
-      // Payment was successful, update the ride status
+      // Regular payment was successful, update the ride status
       handlePaymentSuccess(pspReference, resultCode);
+      
+      // Clean up URL parameters
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    } else if (tipPaymentSuccess === 'true') {
+      // Tip payment was successful
+      toast({ title: 'Tip Payment Successful!', description: 'Your tip has been processed successfully.' });
+      setShowTip(false);
+      setTipAmount("");
+      queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
+      
+      // Finish the ride after tip payment is successful
+      finishRideAfterTip();
       
       // Clean up URL parameters
       const newUrl = window.location.pathname;
@@ -338,18 +365,102 @@ export default function RideTracking() {
   const canCancelRide = ['pending', 'searching_driver', 'driver_assigned', 'accepted'].includes(ride.status);
 
   const finishRide = async () => {
+    // Show rating dialog instead of directly finishing the ride
+    setShowRating(true);
+  };
+
+  const openTipDialog = async () => {
+    if (!params?.rideId) return;
+    try {
+      const res = await apiRequest('GET', `/api/rides/${params.rideId}/tip-bounds`);
+      const json = await res.json();
+      setTipBounds({ min: Number(json.min || 0), max: Number(json.max || 0) });
+      setShowTip(true);
+    } catch (e) {
+      setTipBounds({ min: 0, max: 0 });
+      setShowTip(true);
+    }
+  };
+
+  const submitTip = async () => {
+    if (!ride || !driver) return;
+    
+    // Validate tip amount input
+    if (!tipAmount || tipAmount.trim() === '') {
+      toast({ title: 'Tip amount required', description: 'Please enter a tip amount.', variant: 'destructive' });
+      return;
+    }
+    
+    const amountNum = parseFloat(tipAmount);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      toast({ title: 'Invalid tip amount', description: 'Enter a valid positive number.', variant: 'destructive' });
+      return;
+    }
+    
+    // Validate against ride category min/max bounds
+    if (tipBounds) {
+      const { min, max } = tipBounds;
+      if (min && amountNum < min) {
+        toast({ title: 'Tip too low', description: `Minimum tip amount is $${min.toFixed(2)}.`, variant: 'destructive' });
+        return;
+      }
+      if (max && amountNum > max) {
+        toast({ title: 'Tip too high', description: `Maximum tip amount is $${max.toFixed(2)}.`, variant: 'destructive' });
+        return;
+      }
+    }
+
+    setIsSubmittingTip(true);
+
+    try {
+      // Create payment intent for tip
+      const res = await apiRequest('POST', `/api/rides/${ride.id}/tips/payment-intent`, {
+        driver_id: driver.id,
+        tip_amount: amountNum,
+      });
+      const json = await res.json();
+      const clientSecret = json?.clientSecret;
+      
+      if (!clientSecret) {
+        throw new Error('Failed to create payment intent for tip');
+      }
+
+      // Process tip payment with Stripe
+      await processTipPayment(clientSecret, amountNum);
+      
+    } catch (e: any) {
+      toast({ title: 'Unable to process tip payment', description: e?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setIsSubmittingTip(false);
+    }
+  };
+
+  const processTipPayment = async (clientSecret: string, amount: number) => {
+    // This will be handled by the TipPaymentForm component
+    setShowTipPaymentForm(true);
+    setTipPaymentClientSecret(clientSecret);
+  };
+
+  const finishRideAfterTip = async () => {
+    setIsFinishingRide(true);
+    
     try {
       await apiRequest('POST', `/api/rides/${params?.rideId}/finish`);
-      toast({ title: 'Ride Finished', description: 'Thank you for riding with us.' });
       queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
       queryClient.invalidateQueries({ queryKey: ['/api/rides'] });
-    } catch (e: any) {
-      toast({ title: 'Unable to finish ride', description: e?.message || 'Unknown error', variant: 'destructive' });
+      toast({ title: 'Ride Completed', description: 'Thank you for riding with us!' });
+      // Redirect to rides page after a short delay
+      setTimeout(() => setLocation('/rides'), 2000);
+    } catch (error: any) {
+      toast({ title: 'Unable to complete ride', description: error.message, variant: 'destructive' });
+    } finally {
+      setIsFinishingRide(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <Elements stripe={stripePromise}>
+      <div className="min-h-screen bg-background pb-20">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-sm border-b border-border p-4">
         <div className="flex items-center space-x-3">
@@ -467,6 +578,7 @@ export default function RideTracking() {
                   )}
                   
                   {/* Pay button hidden for completed rides per new rule */}
+                  
                 </div>
 
                 {/* Ride Control Actions - Show when ride is accepted */}
@@ -701,6 +813,229 @@ export default function RideTracking() {
           </DialogContent>
         </Dialog>
       </main>
-    </div>
+      {/* Tip Dialog */}
+      <Dialog open={showTip} onOpenChange={setShowTip}>
+        <DialogContent className="bg-yah-darker border-yah-gold/20">
+          <DialogHeader>
+            <DialogTitle className="text-yah-gold text-center">
+              Tip {driver ? generateYahDriverId(driver.id, driver.name) : 'Your Driver'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {tipBounds && (tipBounds.min || tipBounds.max) ? (
+              <div className="text-center space-y-2">
+                <p className="text-sm text-gray-400">Tip range for this ride:</p>
+                <div className="flex justify-center items-center space-x-4">
+                  <div className="bg-yah-muted/50 rounded-lg px-3 py-2">
+                    <span className="text-xs text-gray-400 block">Minimum</span>
+                    <span className="text-yah-gold font-semibold">${tipBounds.min ? tipBounds.min.toFixed(2) : '0.00'}</span>
+                  </div>
+                  <span className="text-gray-400">-</span>
+                  <div className="bg-yah-muted/50 rounded-lg px-3 py-2">
+                    <span className="text-xs text-gray-400 block">Maximum</span>
+                    <span className="text-yah-gold font-semibold">${tipBounds.max ? tipBounds.max.toFixed(2) : 'No limit'}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 text-center">Enter your tip amount</p>
+            )}
+            
+            <Input
+              type="number"
+              step="0.01"
+              min={tipBounds?.min ?? 0}
+              max={tipBounds?.max ?? undefined}
+              value={tipAmount}
+              onChange={(e) => setTipAmount(e.target.value)}
+              placeholder={tipBounds?.min ? `Enter amount (min: $${tipBounds.min.toFixed(2)})` : "Enter tip amount"}
+              className="bg-yah-muted border-yah-gold/30 text-white"
+              data-testid="input-tip-amount"
+            />
+            <div className="space-y-3">
+              <Button 
+                onClick={submitTip} 
+                disabled={isSubmittingTip || isFinishingRide}
+                className="w-full bg-gradient-gold text-yah-darker font-semibold" 
+                data-testid="button-submit-tip"
+              >
+                {isSubmittingTip ? (
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                ) : (
+                  <i className="fas fa-credit-card mr-2"></i>
+                )}
+                {isSubmittingTip ? 'Creating Payment...' : `Pay Tip $${tipAmount}`}
+              </Button>
+              <Button 
+                onClick={async () => {
+                  setShowTip(false);
+                  setTipAmount("");
+                  await finishRideAfterTip();
+                }}
+                disabled={isSubmittingTip || isFinishingRide}
+                variant="outline" 
+                className="w-full border-yah-gold/30 text-yah-gold hover:bg-yah-gold/10"
+                data-testid="button-skip-tip"
+              >
+                {isFinishingRide ? (
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                ) : (
+                  <i className="fas fa-forward mr-2"></i>
+                )}
+                {isFinishingRide ? 'Completing Ride...' : 'Skip Tip'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tip Payment Form Dialog */}
+      <Dialog open={showTipPaymentForm} onOpenChange={setShowTipPaymentForm}>
+        <DialogContent className="bg-yah-darker border-yah-gold/20">
+          <DialogHeader>
+            <DialogTitle className="text-yah-gold text-center">
+              Complete Tip Payment
+            </DialogTitle>
+          </DialogHeader>
+          <TipPaymentForm
+            clientSecret={tipPaymentClientSecret}
+            tipAmount={tipAmount}
+            onSuccess={() => {
+              setShowTipPaymentForm(false);
+              setShowTip(false);
+              setTipAmount("");
+              setIsSubmittingTip(false);
+              queryClient.invalidateQueries({ queryKey: ['/api/rides', params?.rideId] });
+              finishRideAfterTip();
+            }}
+            onError={(error: string) => {
+              setIsSubmittingTip(false);
+              toast({ title: 'Tip Payment Failed', description: error, variant: 'destructive' });
+            }}
+            onCancel={() => {
+              setShowTipPaymentForm(false);
+              setIsSubmittingTip(false);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+      </div>
+    </Elements>
+  );
+}
+
+// Tip Payment Form Component
+function TipPaymentForm({ 
+  clientSecret, 
+  tipAmount, 
+  onSuccess, 
+  onError, 
+  onCancel 
+}: {
+  clientSecret: string;
+  tipAmount: string;
+  onSuccess: () => void;
+  onError: (error: string) => void;
+  onCancel: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!stripe || !elements) {
+      onError('Stripe not initialized');
+      return;
+    }
+
+    const cardElement = elements.getElement(CardElement);
+    if (!cardElement) {
+      onError('Card element not found');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      const { error } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: cardElement,
+        }
+      });
+
+      if (error) {
+        onError(error.message || 'Payment failed');
+      } else {
+        onSuccess();
+      }
+    } catch (err: any) {
+      onError(err.message || 'Payment processing failed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="text-center">
+        <p className="text-gray-300 mb-2">Tip Amount: <span className="text-yah-gold font-semibold">${tipAmount}</span></p>
+      </div>
+      
+      <div className="space-y-2">
+        <label className="text-sm text-gray-400">Card Details</label>
+        <div className="p-3 bg-yah-muted/50 border border-yah-gold/30 rounded">
+          <CardElement 
+            options={{
+              style: {
+                base: {
+                  fontSize: '16px',
+                  color: '#ffffff',
+                  '::placeholder': {
+                    color: '#9ca3af',
+                  },
+                },
+                invalid: {
+                  color: '#ef4444',
+                },
+              },
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="flex space-x-3">
+        <Button
+          type="submit"
+          disabled={!stripe || isProcessing}
+          className="flex-1 bg-gradient-gold text-yah-darker font-semibold"
+        >
+          {isProcessing ? (
+            <i className="fas fa-spinner fa-spin mr-2"></i>
+          ) : (
+            <i className="fas fa-credit-card mr-2"></i>
+          )}
+          {isProcessing ? 'Processing...' : `Pay $${tipAmount}`}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isProcessing}
+          className="border-yah-gold/30 text-yah-gold"
+        >
+          {isProcessing ? (
+            <i className="fas fa-spinner fa-spin mr-2"></i>
+          ) : null}
+          Cancel
+        </Button>
+      </div>
+
+      <div className="text-xs text-muted-foreground text-center">
+        <i className="fas fa-shield-alt mr-1"></i>
+        Payments are processed securely by Stripe
+      </div>
+    </form>
   );
 }

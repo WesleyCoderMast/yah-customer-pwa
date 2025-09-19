@@ -169,11 +169,13 @@ export default function Rides() {
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-accent">
-                    ${completedRides.reduce(
-                      (acc: number, ride: Ride) =>
-                        acc + parseFloat(typeof ride.total_fare === 'string' ? ride.total_fare : '0'),
-                      0
-                    ).toFixed(0)}
+                    ${completedRides
+                      .reduce(
+                        (acc: number, ride: Ride) =>
+                          acc + (ride?.total_fare ?? 0),
+                        0
+                      )
+                      .toFixed(0)}
                   </div>
                   <div className="text-sm text-muted-foreground">Total Spent</div>
                 </div>

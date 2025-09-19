@@ -40,9 +40,9 @@ export const config = {
   // Payment Service Configuration - REPLACE WITH YOUR ACTUAL VALUES
   payments: {
     stripe: {
-      secretKey: "aa", // Replace with your Stripe secret key
-      publishableKey: "xx", // Replace with your Stripe publishable key
-      webhookSecret: "11",
+      secretKey: "sk_test_51RYe20IzN3Kd4YuMtP5Ps9Jb6IwZUfhedADVJkPphClfycD747kTzwZVpWDfjYjAhP80eHyBRSo4K7YR8BcZGdOr00ROWjEhYw", // Replace with your Stripe secret key
+      publishableKey: "pk_test_51RYe20IzN3Kd4YuMFQYS3q4IwiibtOwzxKYQbWRiIl4yqBepJcnKTCutWUYeYc9fwMdqRjh6Lph96fvsNK00J6QW00mXQyGTEF", // Replace with your Stripe publishable key
+      webhookSecret: "whsec_79a9d0c32c528d891c17b954133c80533e5ee3efa274b5dda140637f638005bf",
     }
   }
 };

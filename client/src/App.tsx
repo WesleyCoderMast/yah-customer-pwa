@@ -14,7 +14,7 @@ import Payment from "@/pages/payment";
 import Profile from "@/pages/profile";
 import Chat from "@/pages/chat";
 import Booking from "@/pages/booking";
-import RideTracking from "@/pages/ride-tracking";
+import RideWrapper from "@/components/ride-wrapper";
 import EmailConfirmed from "@/pages/email-confirmed";
 import NotFound from "@/pages/not-found";
 
@@ -54,7 +54,7 @@ function Router() {
           <Route path="/profile" component={Profile} />
           <Route path="/chat" component={Chat} />
           <Route path="/booking" component={Booking} />
-          <Route path="/ride/:rideId" component={RideTracking} />
+          <Route path="/ride/:rideId" component={RideWrapper} />
         </>
       )}
       <Route component={NotFound} />

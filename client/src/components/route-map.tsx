@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import { LatLngExpression, Icon, latLngBounds } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import './route-map.css';
 import { VITE_SUPABASE_ANON_KEY } from '@/lib/config';
 
 // Fix for default markers in react-leaflet
@@ -56,7 +57,7 @@ interface RouteMapProps {
   passengerCount: number;
   petCount: number;
   showRoute?: boolean;
-  onRouteUpdate?: (distance: number, duration: number, price: number) => void;
+  onRouteUpdate?: (distance: number, duration: number) => void;
 }
 
 export default function RouteMap({ 
@@ -145,8 +146,6 @@ export default function RouteMap({
     try {
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${pickupLng},${pickupLat};${dropoffLng},${dropoffLat}?overview=full&geometries=geojson`;
       
-
-      
       const response = await fetch(osrmUrl);
       
       if (response.ok) {
@@ -184,15 +183,12 @@ export default function RouteMap({
     } catch (error) {
       console.error('Error fetching driving route from OSRM:', error);
       
-      // Fallback to simple calculation
-      const distance = calculateDistance(pickupLat, pickupLng, dropoffLat, dropoffLng);
-      const duration = Math.round(distance * 60 / 25);
-      
-      // Create simple curved route as fallback
+      // Create simple curved route as visual fallback ONLY. Do not provide straight-line distance/duration.
       const routePoints = calculateSimpleRoute(pickupLat, pickupLng, dropoffLat, dropoffLng);
       setRouteCoordinates(routePoints);
       
-      return { distance, duration };
+      // Propagate error so caller won't emit non-OSRM values
+      throw error;
     }
   };
 
@@ -203,11 +199,8 @@ export default function RouteMap({
       // Get real driving route from OSRM
       const { distance, duration } = await fetchDrivingRoute();
       
-      // Fetch real pricing from Supabase edge function
-      const price = await fetchPricing(distance, duration);
-      
-      if (onRouteUpdate) {
-        onRouteUpdate(distance, duration, price);
+      if (onRouteUpdate && typeof distance === 'number' && typeof duration === 'number') {
+        onRouteUpdate(distance, duration);
       }
     } catch (error) {
       console.error('Error fetching route:', error);
@@ -296,7 +289,7 @@ export default function RouteMap({
         
         {/* Pickup Marker */}
         <Marker position={[pickupLat, pickupLng]} icon={pickupIcon}>
-          <Popup>
+          <Popup className="yah-popup">
             <div className="text-sm">
               <strong>Pickup Location</strong><br />
               {pickupLocation.split(',').slice(0, 2).join(', ')}
@@ -306,7 +299,7 @@ export default function RouteMap({
         
         {/* Dropoff Marker */}
         <Marker position={[dropoffLat, dropoffLng]} icon={dropoffIcon}>
-          <Popup>
+          <Popup className="yah-popup">
             <div className="text-sm">
               <strong>Drop-off Location</strong><br />
               {dropoffLocation.split(',').slice(0, 2).join(', ')}

@@ -17,6 +17,7 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "./config";
 import stripeRoutes from "./stripeRoutes";
+import { Store } from "lucide-react";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize Supabase admin client for server-side operations
@@ -747,6 +748,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Payment success handling error:", error);
       res.status(500).json({ message: "Failed to process payment success" });
+    }
+  });
+
+  // Tip bounds for a ride
+  app.get("/api/rides/:id/tip-bounds", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const ride = await storage.getRide(id);
+      if (!ride) return res.status(404).json({ message: "Ride not found" });
+
+      // Prefer ride type specific min/max; fallback to category
+      let min = 0;
+      let max = 0;
+      if ((ride as any).ride_type_id) {
+        const rt = await storage.getRideTypesByCategory((ride as any).ride_type);
+      
+        if (rt && rt.length > 0 && (rt[0] as any).category_id) {
+          const cat = await storage.getRideCategory((rt[0] as any).category_id);
+          if (cat && (cat as any).min_tip && (cat as any).max_tip) {
+            min = Number((cat as any).min_tip);
+            max = Number((cat as any).max_tip);
+          }
+        }
+      }
+
+      return res.json({ min, max });
+    } catch (error: any) {
+      console.error("Tip bounds error:", error);
+      res.status(500).json({ message: "Failed to fetch tip bounds" });
+    }
+  });
+
+  // Create payment intent for tip
+  app.post("/api/rides/:id/tips/payment-intent", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { driver_id, tip_amount } = req.body as { driver_id: string; tip_amount: number };
+
+      if (!driver_id || typeof tip_amount !== 'number') {
+        return res.status(400).json({ message: "driver_id and tip_amount are required" });
+      }
+
+      const ride = await storage.getRide(id);
+      if (!ride) return res.status(404).json({ message: "Ride not found" });
+
+      // Allow tipping for rides that are accepted or in_progress (after rating)
+      if (!['accepted', 'in_progress'].includes((ride as any).status)) {
+        return res.status(400).json({ message: "Ride is not in a state where tipping is allowed" });
+      }
+
+      // Fetch tip bounds
+      let min = 0;
+      let max = 0;
+      if ((ride as any).ride_type_id) {
+        const rt = await storage.getRideType((ride as any).ride_type_id);
+        
+        if (rt && (rt as any).categoryId) {
+          const cat = await storage.getRideCategory((rt as any).categoryId);
+          if (cat && (cat as any).min_tip && (cat as any).max_tip) {
+            min = Number((cat as any).min_tip);
+            max = Number((cat as any).max_tip);
+          }
+        }
+      }
+
+      if ((min && tip_amount < min) || (max && tip_amount > max)) {
+        return res.status(400).json({ message: `Tip must be between ${min} and ${max}` });
+      }
+
+      // Create Stripe payment intent for tip
+      const Stripe = (await import('stripe')).default;
+      const { STRIPE_SECRET_KEY } = await import('./config');
+      const stripe = new Stripe(STRIPE_SECRET_KEY as any);
+
+      const amountCents = Math.round(tip_amount * 100);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amountCents,
+        currency: 'usd',
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+          rideId: id,
+          driverId: driver_id,
+          customerId: (ride as any).customer_id,
+          paymentType: 'tip',
+          tipAmount: String(tip_amount),
+        },
+      });
+
+      return res.json({ 
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id 
+      });
+    } catch (error: any) {
+      console.error("Create tip payment intent error:", error);
+      res.status(500).json({ message: "Failed to create tip payment intent" });
     }
   });
 

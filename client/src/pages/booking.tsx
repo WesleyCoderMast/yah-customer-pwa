@@ -46,68 +46,31 @@ interface LocationSelectionViewProps {
   bookingData: BookingData;
   setBookingData: React.Dispatch<React.SetStateAction<BookingData>>;
   calculateVehicleCount: () => number;
-  calculateFare: () => any;
   setConfirmationPrice: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
-function LocationSelectionView({ bookingData, setBookingData, calculateVehicleCount, calculateFare, setConfirmationPrice }: LocationSelectionViewProps) {
+function LocationSelectionView({ bookingData, setBookingData, calculateVehicleCount, setConfirmationPrice }: LocationSelectionViewProps) {
   const [showRoute, setShowRoute] = useState(false);
   const [routeDistance, setRouteDistance] = useState<number>(0);
   const [routeETA, setRouteETA] = useState<number>(0);
-  const [routePrice, setRoutePrice] = useState<string>("0.00");
   const [isLoadingPrice, setIsLoadingPrice] = useState(false);
   const [supabasePrice, setSupabasePrice] = useState<string | null>(null);
 
-  // Calculate route distance using coordinates
-  const calculateRouteDistance = async () => {
-    if (bookingData.pickupLat && bookingData.pickupLng && bookingData.dropoffLat && bookingData.dropoffLng) {
-      // Use Haversine formula for distance calculation
-      const R = 3959; // Earth's radius in miles
-      const dLat = (bookingData.dropoffLat - bookingData.pickupLat) * Math.PI / 180;
-      const dLng = (bookingData.dropoffLng - bookingData.pickupLng) * Math.PI / 180;
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(bookingData.pickupLat * Math.PI / 180) * Math.cos(bookingData.dropoffLat * Math.PI / 180) *
-                Math.sin(dLng/2) * Math.sin(dLng/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      const distance = R * c;
-      
-      // Estimate ETA (assuming 25 mph average speed)
-      const eta = Math.round(distance * 60 / 25);
-      
-      setRouteDistance(distance);
-      setRouteETA(eta);
-      
-      // Update booking data
-      setBookingData(prev => ({
-        ...prev,
-        estimatedDistance: distance,
-        estimatedTime: eta
-      }));
-      
-      // Calculate updated price
-      const fareDetails = calculateFare();
-      setRoutePrice(fareDetails.total.toFixed(2));
-    }
-  };
-
   // Fetch pricing from Supabase edge function
-  const fetchSupabasePrice = async (forConfirmation = false) => {
+  const fetchSupabasePrice = async (forConfirmation = false, opts?: { distance?: number; duration?: number }) => {
     if (!bookingData.pickupLat || !bookingData.pickupLng || !bookingData.dropoffLat || !bookingData.dropoffLng) {
       return;
     }
 
     setIsLoadingPrice(true);
     try {
-      // Calculate distance first (same as in route-map.tsx)
-      const R = 3959; // Earth's radius in miles
-      const dLat = (bookingData.dropoffLat - bookingData.pickupLat) * Math.PI / 180;
-      const dLng = (bookingData.dropoffLng - bookingData.pickupLng) * Math.PI / 180;
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(bookingData.pickupLat * Math.PI / 180) * Math.cos(bookingData.dropoffLat * Math.PI / 180) *
-                Math.sin(dLng/2) * Math.sin(dLng/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      const distance = R * c;
-      const duration = Math.round(distance * 60 / 25); // Assume 25 mph average speed
+      // Prefer OSRM values passed in, fallback to bookingData
+      const distance = opts?.distance ?? bookingData.estimatedDistance;
+      const duration = opts?.duration ?? bookingData.estimatedTime;
+      if (!distance || !duration) {
+        // Not ready yet; avoid error state
+        return;
+      }
 
       const requestBody = {
         miles: distance,
@@ -198,12 +161,8 @@ function LocationSelectionView({ bookingData, setBookingData, calculateVehicleCo
           <Button 
             variant="outline" 
             size="sm"
-            onClick={() => {
+            onClick={async () => {
               setShowRoute(true);
-              // Always trigger route update when clicked
-              if (bookingData.pickupLat && bookingData.pickupLng && bookingData.dropoffLat && bookingData.dropoffLng) {
-                calculateRouteDistance();
-              }
             }}
             className="bg-gray-50 dark:bg-gray-700 border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
             data-testid="button-show-route"
@@ -213,7 +172,17 @@ function LocationSelectionView({ bookingData, setBookingData, calculateVehicleCo
           <Button 
             variant="outline" 
             size="sm"
-            onClick={() => fetchSupabasePrice(false)}
+            onClick={() => {
+              // Ensure OSRM route is fetched to populate distance/ETA
+              if (!showRoute) {
+                setShowRoute(true);
+                return; // onRouteUpdate will trigger pricing
+              }
+              // If route already shown and distance/ETA available, fetch pricing
+              if (bookingData.estimatedDistance && bookingData.estimatedTime) {
+                fetchSupabasePrice(false);
+              }
+            }}
             disabled={isLoadingPrice || !bookingData.pickupLocation || !bookingData.dropoffLocation}
             className="bg-gray-50 dark:bg-gray-700 border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50"
             data-testid="button-get-price"
@@ -250,17 +219,19 @@ function LocationSelectionView({ bookingData, setBookingData, calculateVehicleCo
             passengerCount={bookingData.passengerCount}
             petCount={bookingData.petCount}
             showRoute={showRoute}
-            onRouteUpdate={(distance, duration, price) => {
+            onRouteUpdate={(distance, duration) => {
               setRouteDistance(distance);
               setRouteETA(duration);
-              const formattedPrice = price.toFixed(2);
-              setRoutePrice(formattedPrice);
-              setConfirmationPrice(formattedPrice); // Use same price for confirmation
+              // const formattedPrice = price.toFixed(2);
+              // console.log('****************************** here is route update price', formattedPrice);
+              // setConfirmationPrice(formattedPrice); // Use same price for confirmation
               setBookingData(prev => ({
                 ...prev,
                 estimatedDistance: distance,
                 estimatedTime: duration
               }));
+              // Fetch price using fresh OSRM values directly to avoid stale state
+              fetchSupabasePrice(false, { distance, duration });
             }}
           />
           
@@ -282,8 +253,8 @@ function LocationSelectionView({ bookingData, setBookingData, calculateVehicleCo
                     <i className="fas fa-route text-blue-400 text-sm mr-2"></i>
                     <p className="text-slate-400 text-xs font-medium">Distance</p>
                   </div>
-                  <p className="text-white font-bold text-sm">{routeDistance.toFixed(2)} km</p>
-                  <p className="text-slate-400 text-xs">{(routeDistance * 0.621371).toFixed(2)} miles</p>
+                  <p className="text-white font-bold text-sm">{routeDistance.toFixed(2)} miles</p>
+                  <p className="text-slate-400 text-xs">Estimated Distance</p>
                 </div>
                 <div className="bg-slate-700 rounded-xl p-4 border border-slate-600">
                   <div className="flex items-center mb-2">
@@ -398,8 +369,8 @@ export default function Booking() {
     pickupLng: 0,
     dropoffLat: 0,
     dropoffLng: 0,
-    estimatedTime: 15,
-    estimatedDistance: 5.2,
+    estimatedTime: 0,
+    estimatedDistance: 0,
     scheduledFor: null,
   });
 
@@ -472,16 +443,12 @@ export default function Booking() {
 
     setIsLoadingPrice(true);
     try {
-      // Calculate distance first (same as in route-map.tsx)
-      const R = 3959; // Earth's radius in miles
-      const dLat = (bookingData.dropoffLat - bookingData.pickupLat) * Math.PI / 180;
-      const dLng = (bookingData.dropoffLng - bookingData.pickupLng) * Math.PI / 180;
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(bookingData.pickupLat * Math.PI / 180) * Math.cos(bookingData.dropoffLat * Math.PI / 180) *
-                Math.sin(dLng/2) * Math.sin(dLng/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      const distance = R * c;
-      const duration = Math.round(distance * 60 / 25); // Assume 25 mph average speed
+      // Use distance and duration provided by RouteMap via onRouteUpdate
+      const distance = bookingData.estimatedDistance;
+      const duration = bookingData.estimatedTime;
+      if (!distance || !duration) {
+        throw new Error('Distance/Duration not available yet');
+      }
 
       const requestBody = {
         miles: distance,
@@ -527,140 +494,20 @@ export default function Booking() {
     }
   };
   
-  // Skip fetching pricing for confirmation step since it's already set from route calculation
-  // useEffect(() => {
-  //   if (currentStep === 'confirmation' && !confirmationPrice) {
-  //     fetchSupabasePrice(true);
-  //   }
-  // }, [currentStep]);
+  // Auto-fetch pricing when reaching confirmation page if not already set
+  useEffect(() => {
+    if (currentStep === 'confirmation' && !confirmationPrice && bookingData.pickupLat && bookingData.pickupLng && bookingData.dropoffLat && bookingData.dropoffLng) {
+      fetchSupabasePrice(true);
+    }
+  }, [currentStep, confirmationPrice, bookingData.pickupLat, bookingData.pickupLng, bookingData.dropoffLat, bookingData.dropoffLng]);
   
   // Comprehensive fare calculation with multi-vehicle support
-  const calculateFare = () => {
-    const vehicleCount = calculateVehicleCount();
-    
-    // Base fares by ride type (per vehicle)
-    const baseFares: Record<string, number> = {
-      // In-City Regular
-      'YahNow': 8.00,
-      'YahGo': 8.00,
-      'YahSwift': 10.00,
-      'YahChoice': 12.00,
-      'YahSolo': 8.00,
-      'YahGroup': 15.00,
-      'YahFamily': 12.00,
-      'YahPet': 10.00,
-      'YahQuiet': 9.00,
-      'YahSilent': 9.00,
-      
-      // In-City Individual
-      'YahYouth': 7.00,
-      'YahYoungGirl': 7.00,
-      'YahYoungBoy': 7.00,
-      'YahMan': 8.00,
-      'YahWoman': 8.00,
-      'YahSenior': 6.00,
-      'YahSingle': 8.00,
-      
-      // In-City Relationship
-      'YahCouple': 15.00,
-      'YahEngagement': 18.00,
-      'YahUnion': 16.00,
-      'YahDating': 14.00,
-      'YahMarriage': 20.00,
-      'YahWedding': 25.00,
-      'YahMatch': 12.00,
-      'YahPure': 14.00,
-      
-      // In-City Event
-      'YahBirthday': 15.00,
-      'YahValentine': 18.00,
-      'YahParty': 20.00,
-      'YahInvitation': 16.00,
-      
-      // In-City Protected
-      'YahArmy': 12.00,
-      'YahMilitary': 12.00,
-      'YahSecurity': 14.00,
-      
-      // In-City Luxury
-      'YahRoyal': 35.00,
-      'YahCelebrity': 45.00,
-      'YahElite': 30.00,
-      
-      // In-City Service
-      'YahBusiness': 15.00,
-      'YahMedical': 12.00,
-      
-      // Out-of-City Travel
-      'YahTravelNow': 25.00,
-      'YahTravelGo': 25.00,
-      'YahTravelSwift': 30.00,
-      'YahTravelChoice': 35.00,
-      'YahTravelYouth': 22.00,
-      'YahTravelYoungGirl': 22.00,
-      'YahTravelYoungBoy': 22.00,
-      'YahTravelMan': 25.00,
-      'YahTravelWoman': 25.00,
-      'YahTravelSenior': 20.00,
-      'YahTravelSingle': 25.00,
-      'YahTravelSolo': 25.00,
-      'YahTravelGroup': 40.00,
-      'YahTravelFamily': 35.00,
-      'YahTravelBusiness': 40.00,
-      'YahTravelMedical': 30.00,
-      'YahTravelEngagement': 45.00,
-      'YahTravelUnion': 40.00,
-      'YahTravelMarriage': 50.00,
-      'YahTravelHoneymoon': 55.00,
-      'YahTravelMatch': 35.00,
-      'YahTravelPure': 40.00,
-      'YahTravelArmy': 30.00,
-      'YahTravelMilitary': 30.00,
-      'YahTravelSecurity': 35.00,
-      'YahTravelRoyal': 75.00,
-      'YahTravelCelebrity': 90.00,
-      'YahTravelElite': 65.00,
-      'YahTravelQuiet': 28.00,
-      'YahTravelSilent': 28.00,
-    };
-    
-    const baseFare = baseFares[bookingData.rideType] || 8.00;
-    
-    // Calculate total for all vehicles
-    const totalBaseFare = baseFare * vehicleCount;
-    
-    // Distance and time based fees (per vehicle)
-    const distanceFee = Math.max(0, (bookingData.estimatedDistance - 2)) * 2.50;
-    const timeFee = Math.max(0, (bookingData.estimatedTime - 10)) * 0.50;
-    const totalDistanceFee = distanceFee * vehicleCount;
-    const totalTimeFee = timeFee * vehicleCount;
-    
-    // Passenger fee (only for additional passengers beyond first)
-    const passengerFee = Math.max(0, (bookingData.passengerCount - 1)) * 2.00;
-    
-    // Pet fee
-    const petFee = bookingData.petCount * 5.00;
-    
-    // Multi-vehicle tip (if more than 1 vehicle)
-    const multiVehicleTip = vehicleCount > 1 ? vehicleCount * 5.00 : 0;
-    
-    return {
-      baseFare: totalBaseFare,
-      distanceFee: totalDistanceFee,
-      timeFee: totalTimeFee,
-      passengerFee,
-      petFee,
-      multiVehicleTip,
-      total: totalBaseFare + totalDistanceFee + totalTimeFee + passengerFee + petFee + multiVehicleTip,
-      vehicleCount
-    };
-  };
+
 
   // Navigation helpers
   const nextStep = () => {
     const steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'];
     const currentIndex = steps.indexOf(currentStep);
-    
     // Always show open-door step - removed auto-skip logic
     
     if (currentIndex < steps.length - 1) {
@@ -773,7 +620,7 @@ export default function Booking() {
       case 'driver-preferences':
         return true; // Always can proceed
       case 'locations':
-        return !!bookingData.pickupLocation && !!bookingData.dropoffLocation;
+        return !!bookingData.pickupLocation && !!bookingData.dropoffLocation && bookingData.estimatedDistance > 0 && bookingData.estimatedTime > 0;
       case 'confirmation':
         return true;
       default:
@@ -813,7 +660,10 @@ export default function Booking() {
         <div className="mt-8 space-y-4">
           {currentStep !== 'confirmation' ? (
             <button
-              onClick={nextStep}
+              onClick={async () => {
+                await fetchSupabasePrice(false);
+                nextStep();
+              }}
               disabled={!canProceed()}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-4 px-6 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               data-testid="button-next"
@@ -1316,7 +1166,6 @@ export default function Booking() {
           bookingData={bookingData} 
           setBookingData={setBookingData}
           calculateVehicleCount={calculateVehicleCount}
-          calculateFare={calculateFare}
           setConfirmationPrice={setConfirmationPrice}
         />;
         
@@ -1413,7 +1262,7 @@ export default function Booking() {
                 <div className="flex justify-between items-center">
                   <h3 className="font-semibold text-white text-lg">Total</h3>
                   <div className="text-right">
-                    {isLoadingPrice ? (
+                    {isLoadingPrice || (!confirmationPrice && bookingData.pickupLat && bookingData.pickupLng && bookingData.dropoffLat && bookingData.dropoffLng) ? (
                       <div className="flex items-center text-lg font-bold text-blue-400">
                         <i className="fas fa-spinner fa-spin mr-2"></i>
                         Loading...
