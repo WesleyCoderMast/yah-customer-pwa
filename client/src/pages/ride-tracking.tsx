@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import DriverBids from "@/components/driver-bids";
+import ReportDriverModal from "@/components/report-driver-modal";
 import type { Ride } from "@shared/schema";
 import { VITE_API_BASE_URL, VITE_STRIPE_PUBLISHABLE_KEY } from "@/lib/config";
 import { supabase } from "@/lib/supabase";
@@ -27,6 +28,7 @@ export default function RideTracking() {
   const queryClient = useQueryClient();
   const [showRating, setShowRating] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
+  const [showReportDriver, setShowReportDriver] = useState(false);
   const [refundQuote, setRefundQuote] = useState<{ amountCents: number; totalFare: number; ceoInvisible: number } | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [rating, setRating] = useState<1 | 2 | null>(null);
@@ -213,9 +215,15 @@ export default function RideTracking() {
       });
 
       if (response.ok) {
+        // Check if this is a QR code booking to show appropriate message
+        const ride = await fetch(`${VITE_API_BASE_URL}/api/rides/${params?.rideId}`).then(r => r.json());
+        const isQRBooking = ride?.created_via_qr;
+        
         toast({
           title: "Payment Successful!",
-          description: "Your payment has been processed successfully.",
+          description: isQRBooking 
+            ? "Driver has been assigned to your ride!" 
+            : "Your payment has been processed successfully.",
         });
         
         // Refresh ride data to show updated status
@@ -577,6 +585,19 @@ export default function RideTracking() {
                     </Button>
                   )}
                   
+                  {/* Report Driver Button - Show for progressing rides */}
+                  {(ride.status === 'accepted' || ride.status === 'driver_assigned' || ride.status === 'driver_arriving' || ride.status === 'driver_arrived' || ride.status === 'in_progress') && (
+                    <Button 
+                      onClick={() => setShowReportDriver(true)}
+                      variant="outline"
+                      className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 font-semibold"
+                      data-testid="button-report-driver"
+                    >
+                      <i className="fas fa-exclamation-triangle mr-2"></i>
+                      Report
+                    </Button>
+                  )}
+                  
                   {/* Pay button hidden for completed rides per new rule */}
                   
                 </div>
@@ -599,7 +620,7 @@ export default function RideTracking() {
                       data-testid="button-cancel-ride"
                     >
                       <i className="fas fa-ban mr-2"></i>
-                      Cancel & Report
+                      Cancel Ride
                     </Button>
                   </div>
                 )}
@@ -919,10 +940,22 @@ export default function RideTracking() {
           />
         </DialogContent>
       </Dialog>
-      </div>
-    </Elements>
-  );
-}
+       </div>
+
+       {/* Report Driver Modal */}
+       {driver && user && (
+         <ReportDriverModal
+           isOpen={showReportDriver}
+           onClose={() => setShowReportDriver(false)}
+           driverId={driver.id}
+           driverName={generateYahDriverId(driver.id, driver.name)}
+           rideId={ride.id}
+           customerId={user.id}
+         />
+       )}
+     </Elements>
+   );
+ }
 
 // Tip Payment Form Component
 function TipPaymentForm({ 

@@ -7,7 +7,8 @@ import {
   rides,
   payments,
   yahMessages,
-  driverReports,
+  reports,
+  violationTypes,
   savedLocations,
   rideRequests,
   yahChatSessions,
@@ -29,8 +30,8 @@ import {
   type InsertPayment,
   type ChatMessage,
   type InsertChatMessage,
-  type DriverReport,
-  type InsertDriverReport,
+  type Report,
+  type InsertReport,
   type SavedLocation,
   type InsertSavedLocation,
   type RideRequest,
@@ -97,8 +98,11 @@ export interface IStorage {
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
   getChatMessages(customerId: string, rideId?: string): Promise<ChatMessage[]>;
   
-  // Driver report operations
-  createDriverReport(report: InsertDriverReport): Promise<DriverReport>;
+  // Report operations (for both driver and customer reports)
+  createReport(report: InsertReport): Promise<Report>;
+  
+  // Violation types operations
+  getViolationTypes(): Promise<any[]>;
   
   // Saved location operations
   getSavedLocations(customerId: string): Promise<SavedLocation[]>;
@@ -709,24 +713,60 @@ export class DatabaseStorage implements IStorage {
     return data;
   }
 
-  // Driver report operations - simplified for demo
-  async createDriverReport(reportData: InsertDriverReport): Promise<DriverReport> {
+  // Report operations - for both driver and customer reports
+  async createReport(reportData: InsertReport): Promise<Report> {
     if (!supabase) {
       throw new Error("Supabase client not initialized");
     }
+    
+    // Map TypeScript field names to database column names
+    const dbData = {
+      driver_id: reportData.driverId,
+      ride_id: reportData.rideId,
+      customer_id: reportData.customerId,
+      reported_by: reportData.reportedBy,
+      violation_type_id: reportData.violationTypeId,
+      custom_reason: reportData.customReason,
+      description: reportData.description,
+      media_files: reportData.mediaFiles,
+      has_media: reportData.hasMedia,
+      status: reportData.status,
+      action_taken: reportData.actionTaken,
+      admin_notes: reportData.adminNotes,
+      reviewed_by: reportData.reviewedBy,
+      reviewed_at: reportData.reviewedAt,
+    };
+    
     const { data, error } = await supabase
-      .from('driver_reports')
-      .insert({
-        ...reportData,
-        createdAt: new Date().toISOString(),
-      })
+      .from('reports')
+      .insert(dbData)
       .select()
       .single();
     
     if (error) {
-      throw new Error(`Failed to create driver report: ${error.message}`);
+      throw new Error(`Failed to create report: ${error.message}`);
     }
     return data;
+  }
+
+  // Violation types operations
+  async getViolationTypes(): Promise<any[]> {
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
+    }
+
+    const { data, error } = await supabase
+      .from('violation_types')
+      .select('*')
+      .eq('is_active', true)
+      .order('severity', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching violation types:', error);
+      throw new Error(error.message);
+    }
+
+    return data || [];
   }
 
   // Saved location operations

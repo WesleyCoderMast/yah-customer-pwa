@@ -238,6 +238,7 @@ export const rides = pgTable("rides", {
   customer_rating_emoji: text("customer_rating_emoji"),
   ride_type_id: uuid("ride_type_id").references(() => rideTypes.id, { onDelete: "set null", onUpdate: "cascade" }),
   ride_scope: varchar("ride_scope").notNull().default('In-City'),
+  created_via_qr: boolean("created_via_qr").notNull().default(false),
 });
 
 // YahChat sessions table
@@ -360,16 +361,52 @@ export const yahMessages = pgTable("yah_messages", {
   is_read: boolean("is_read").default(false),
 });
 
-// Driver reports table
-export const driverReports = pgTable("driver_reports", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  customerId: varchar("customer_id").notNull().references(() => customers.id),
-  driverId: varchar("driver_id").notNull().references(() => drivers.id),
+// Violation types table for dynamic violation management
+export const violationTypes = pgTable("violation_types", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  
+  // Violation details
+  code: text("code").notNull().unique(), // religious_talk, physical_behavior, etc.
+  name: text("name").notNull(), // Display name
+  description: text("description"), // Detailed description
+  icon: text("icon").notNull(), // Emoji or icon
+  action: text("action").notNull(), // BAN, Review + report, Report, etc.
+  severity: text("severity").notNull(), // low, medium, high, critical
+  requiresImmediateAction: boolean("requires_immediate_action").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  
+});
+
+// reports table - comprehensive reporting system
+export const reports = pgTable("reports", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  
+  // References
+  driverId: uuid("driver_id").notNull().references(() => drivers.id),
   rideId: varchar("ride_id").notNull().references(() => rides.id),
-  reportReason: text("report_reason").notNull(),
+  customerId: varchar("customer_id").notNull(),
+  
+  // Report source
+  reportedBy: text("reported_by").notNull(), // 'driver' or 'customer'
+  
+  // Violation details
+  violationTypeId: bigint("violation_type_id", { mode: "number" }).references(() => violationTypes.id),
+  customReason: text("custom_reason"), // For "other" violations
   description: text("description"),
-  status: varchar("status").default("pending"), // pending, reviewed, resolved
-  createdAt: timestamp("created_at").defaultNow(),
+  
+  // Evidence
+  mediaFiles: jsonb("media_files"), // Array of photo/video URLs with metadata
+  hasMedia: boolean("has_media").notNull().default(false),
+  
+  // Status and actions
+  status: text("status").notNull().default('pending'), // pending, under_review, resolved, dismissed
+  actionTaken: text("action_taken"), // ban_immediate, ban_review, report_only, warning, no_action
+  adminNotes: text("admin_notes"),
+  reviewedBy: uuid("reviewed_by"), // Admin user ID who reviewed
+  reviewedAt: timestamp("reviewed_at"),
+  
 });
 
 // Saved locations table
@@ -402,21 +439,23 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
 export const insertRideSchema = createInsertSchema(rides).omit({
   id: true,
   created_at: true,
+  driver_id: true, // Remove driver_id from auto-generated schema
 }).extend({
   // Add validation for passenger and pet counts
   rider_count: z.number().min(1).max(20).optional(),
   pet_count: z.number().min(0).max(10).optional(),
   
-  // Make some fields optional since they can be null in database
-  driver_id: z.string().optional(),
+  // Override driver_id to allow null values (for manual bookings without driver)
+  driver_id: z.string().uuid().nullable().optional(),
   accepted_at: z.date().optional().nullable(),
   cancelled_at: z.date().optional().nullable(),
-  tip_amount: z.string().optional().nullable(),
+  tip_amount: z.number().optional().nullable(),
   open_door_requested: z.boolean().optional().nullable(),
   person_preference_id: z.number().min(1).max(6).optional(),
   ride_type_id: z.string().optional(),
   ride_scope: z.string().optional(),
   total_fare: z.number().optional().nullable(),
+  created_via_qr: z.boolean().optional(),
 });
 
 export const insertOtpSchema = createInsertSchema(otpVerifications).omit({
@@ -445,7 +484,7 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
   created_at: true,
 });
 
-export const insertDriverReportSchema = createInsertSchema(driverReports).omit({
+export const insertReportSchema = createInsertSchema(reports).omit({
   id: true,
   createdAt: true,
 });
@@ -512,8 +551,8 @@ export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type ChatMessage = typeof yahMessages.$inferSelect;
 export type InsertChatMessage = z.infer<typeof insertYahMessageSchema>;
 
-export type DriverReport = typeof driverReports.$inferSelect;
-export type InsertDriverReport = z.infer<typeof insertDriverReportSchema>;
+export type Report = typeof reports.$inferSelect;
+export type InsertReport = z.infer<typeof insertReportSchema>;
 
 export type SavedLocation = typeof savedLocations.$inferSelect;
 export type InsertSavedLocation = z.infer<typeof insertSavedLocationSchema>;
