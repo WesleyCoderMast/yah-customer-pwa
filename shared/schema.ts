@@ -238,6 +238,7 @@ export const rides = pgTable("rides", {
   customer_rating_emoji: text("customer_rating_emoji"),
   ride_type_id: uuid("ride_type_id").references(() => rideTypes.id, { onDelete: "set null", onUpdate: "cascade" }),
   ride_scope: varchar("ride_scope").notNull().default('In-City'),
+  created_via_qr: boolean("created_via_qr").notNull().default(false),
 });
 
 // YahChat sessions table
@@ -438,21 +439,23 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
 export const insertRideSchema = createInsertSchema(rides).omit({
   id: true,
   created_at: true,
+  driver_id: true, // Remove driver_id from auto-generated schema
 }).extend({
   // Add validation for passenger and pet counts
   rider_count: z.number().min(1).max(20).optional(),
   pet_count: z.number().min(0).max(10).optional(),
   
-  // Make some fields optional since they can be null in database
-  driver_id: z.string().optional(),
+  // Override driver_id to allow null values (for manual bookings without driver)
+  driver_id: z.string().uuid().nullable().optional(),
   accepted_at: z.date().optional().nullable(),
   cancelled_at: z.date().optional().nullable(),
-  tip_amount: z.string().optional().nullable(),
+  tip_amount: z.number().optional().nullable(),
   open_door_requested: z.boolean().optional().nullable(),
   person_preference_id: z.number().min(1).max(6).optional(),
   ride_type_id: z.string().optional(),
   ride_scope: z.string().optional(),
   total_fare: z.number().optional().nullable(),
+  created_via_qr: z.boolean().optional(),
 });
 
 export const insertOtpSchema = createInsertSchema(otpVerifications).omit({

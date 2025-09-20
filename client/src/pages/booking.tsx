@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useRoute } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -348,10 +348,31 @@ export default function Booking() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [match, params] = useRoute("/booking");
   const [isBooking, setIsBooking] = useState(false);
   const [currentStep, setCurrentStep] = useState<BookingStep>('trip-area');
   const [isLoadingPrice, setIsLoadingPrice] = useState(false);
   const [confirmationPrice, setConfirmationPrice] = useState<string | null>(null);
+  const [qrDriverId, setQrDriverId] = useState<string | null>(null);
+  
+  // Handle QR code parameters from URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const driverId = urlParams.get('driverId');
+    const source = urlParams.get('source');
+    
+    if (source === 'qr' && driverId) {
+      setQrDriverId(driverId);
+      toast({
+        title: "Driver Found",
+        description: "Driver information loaded from QR code. Please select your pickup and dropoff locations.",
+      });
+      
+      // Clean up URL parameters
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [toast]);
   
   const [bookingData, setBookingData] = useState<BookingData>({
     tripArea: 'in-city',
@@ -413,7 +434,9 @@ export default function Booking() {
     onSuccess: (response) => {
       toast({
         title: "Ride Booked Successfully!",
-        description: "Searching for available drivers...",
+        description: qrDriverId 
+          ? "Driver will be assigned after payment completion!" 
+          : "Searching for available drivers...",
       });
       // Navigate to ride tracking
       response.json().then(data => {
@@ -506,9 +529,15 @@ export default function Booking() {
 
   // Navigation helpers
   const nextStep = () => {
-    const steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'];
+    let steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'];
+    
+    // Skip open-door and driver-preferences steps if driver is pre-selected via QR code
+    if (qrDriverId) {
+      steps = steps.filter(step => step !== 'open-door' && step !== 'driver-preferences');
+    }
+    
     const currentIndex = steps.indexOf(currentStep);
-    // Always show open-door step - removed auto-skip logic
+    // Always show open-door step for regular bookings - removed auto-skip logic
     
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1]);
@@ -516,10 +545,16 @@ export default function Booking() {
   };
   
   const prevStep = () => {
-    const steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'];
+    let steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'];
+    
+    // Skip open-door and driver-preferences steps if driver is pre-selected via QR code
+    if (qrDriverId) {
+      steps = steps.filter(step => step !== 'open-door' && step !== 'driver-preferences');
+    }
+    
     const currentIndex = steps.indexOf(currentStep);
     
-    // Always show open-door step when going back - removed auto-skip logic
+    // Always show open-door step when going back for regular bookings - removed auto-skip logic
     
     if (currentIndex > 0) {
       setCurrentStep(steps[currentIndex - 1]);
@@ -570,7 +605,7 @@ export default function Booking() {
       ride_type: bookingData.rideType || '',
       ride_type_id: bookingData.rideTypeId || '',
       ride_scope: bookingData.tripArea === 'in-city' ? 'In-City' : 'Out-of-City / Out-of-State / Travel',
-      status: 'pending',
+      status: 'pending', // Always start with pending - will be updated to accepted after payment for QR bookings
       distance_miles: bookingData.estimatedDistance || 5.0,
       duration_minutes: bookingData.estimatedTime || 15.0,
       rider_count: bookingData.passengerCount || 1,
@@ -578,6 +613,9 @@ export default function Booking() {
       open_door_requested: bookingData.doorOpeningRequested || false,
       person_preference_id: bookingData.personPreferenceId,
       total_fare: confirmationPrice ? parseFloat(confirmationPrice) : 0.0,
+      // QR code specific fields - driver will be assigned after payment success
+      driver_id: qrDriverId || null, // Store QR driver ID temporarily - will be confirmed after payment
+      created_via_qr: !!qrDriverId, // Flag to indicate this was created via QR code
     };
 
     // Debug logging
@@ -616,9 +654,11 @@ export default function Booking() {
       case 'passengers':
         return bookingData.passengerCount >= 1;
       case 'open-door':
-        return true; // Always can proceed
+        // Skip validation if driver is pre-selected via QR code
+        return !qrDriverId;
       case 'driver-preferences':
-        return true; // Always can proceed
+        // Skip validation if driver is pre-selected via QR code
+        return !qrDriverId;
       case 'locations':
         return !!bookingData.pickupLocation && !!bookingData.dropoffLocation && bookingData.estimatedDistance > 0 && bookingData.estimatedTime > 0;
       case 'confirmation':
@@ -645,12 +685,42 @@ export default function Booking() {
             <p className="text-sm text-slate-300">{getStepTitle()}</p>
           </div>
           <div className="text-sm text-slate-300 font-medium">
-            Step {['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'].indexOf(currentStep) + 1} of 8
+            Step {(() => {
+              let steps: BookingStep[] = ['trip-area', 'category', 'ride-type', 'passengers', 'open-door', 'driver-preferences', 'locations', 'confirmation'];
+              if (qrDriverId) {
+                steps = steps.filter(step => step !== 'open-door' && step !== 'driver-preferences');
+              }
+              return steps.indexOf(currentStep) + 1;
+            })()} of {qrDriverId ? 6 : 8}
           </div>
         </div>
       </header>
 
       <main className="p-4">
+        {/* QR Driver Info Display */}
+        {qrDriverId && (
+          <div className="bg-gradient-to-r from-yah-gold/20 to-yah-gold/10 border border-yah-gold/30 rounded-lg p-4 mb-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 bg-yah-gold rounded-full flex items-center justify-center">
+                <i className="fas fa-qrcode text-yah-darker text-xl"></i>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-yah-gold font-semibold">Driver Pre-Selected</h3>
+                <p className="text-white text-sm">Driver found via QR code scan</p>
+                <p className="text-gray-300 text-xs">ID: {qrDriverId}</p>
+              </div>
+              <Button
+                onClick={() => setQrDriverId(null)}
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white"
+              >
+                <i className="fas fa-times"></i>
+              </Button>
+            </div>
+          </div>
+        )}
+        
         {/* Step Content */}
         <div className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
           {renderStepContent()}

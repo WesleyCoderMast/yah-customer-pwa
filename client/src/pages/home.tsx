@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import BottomNavigation from "@/components/bottom-navigation";
+import QRScanner from "@/components/qr-scanner";
 import { VITE_API_BASE_URL } from "@/lib/config";
 
 export default function Home() {
   const { user } = useAuth();
+  const [showQRScanner, setShowQRScanner] = useState(false);
   
   // Fetch customer data from database
   const { data: customerData, isLoading } = useQuery({
@@ -112,11 +116,29 @@ export default function Home() {
             </div>
           </div>
 
+          {/* QR Scanner Button */}
+          <div className="mb-6">
+            <Button
+              onClick={() => setShowQRScanner(true)}
+              className="w-full bg-gradient-gold text-yah-darker font-semibold py-4 text-lg"
+            >
+              <i className="fas fa-qrcode mr-3 text-xl"></i>
+              Scan Driver QR Code
+            </Button>
+            <p className="text-center text-sm text-muted-foreground mt-2">
+              Scan a driver's QR code to book a ride instantly
+            </p>
+          </div>
 
         </section>
 
-
       </main>
+
+      {/* QR Scanner Modal */}
+      <QRScanner
+        isOpen={showQRScanner}
+        onClose={() => setShowQRScanner(false)}
+      />
 
       <BottomNavigation currentPage="home" />
     </div>

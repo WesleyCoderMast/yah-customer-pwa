@@ -322,7 +322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('ride_type_id from request:', req.body.ride_type_id);
       
       const rideData = insertRideSchema.parse(req.body);
-      
+
       // Debug parsed data
       console.log('Parsed ride data:', rideData);
       console.log('person_preference_id after parsing:', rideData.person_preference_id);
@@ -349,6 +349,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create single ride booking
       const ride = await storage.createRide(rideData);
+
+      // If this is a QR code ride with pre-assigned driver, send notification
+      if (rideData.driver_id && rideData.created_via_qr) {
+        try {
+          // TODO: Send real-time notification to driver about new ride
+          console.log(`QR Code Ride Created: ${ride.id} assigned to driver ${rideData.driver_id}`);
+        } catch (error) {
+          console.error("Failed to notify driver:", error);
+        }
+      }
 
       res.json({ ride });
     } catch (error: any) {
@@ -708,15 +718,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isPaymentSuccessful = resultCode === 'Authorised' || resultCode === 'Received';
 
       if (isPaymentSuccessful) {
-        // Update ride status to completed if not already
+        // Get current ride to check if it's a QR code booking
         const currentRide = await storage.getRide(id);
         let updatedRide = currentRide;
         
-        if (currentRide && currentRide.status !== 'completed') {
-          updatedRide = await storage.updateRide(id, {
-            status: 'completed',
-            completed_at: new Date()
-          });
+        if (currentRide) {
+          // Check if this is a QR code booking
+          if (currentRide.created_via_qr && currentRide.driver_id && currentRide.status === 'pending') {
+            // For QR code bookings: confirm driver assignment and set status to 'accepted'
+            updatedRide = await storage.updateRide(id, {
+              status: 'accepted',
+              accepted_at: new Date()
+            });
+            console.log(`QR code booking: Driver ${currentRide.driver_id} confirmed for ride ${id} after payment success`);
+          } else if (currentRide.status !== 'completed') {
+            // For regular bookings: set status to completed
+            updatedRide = await storage.updateRide(id, {
+              status: 'completed',
+              completed_at: new Date()
+            });
+          }
         }
 
         // Update the payment record in the database

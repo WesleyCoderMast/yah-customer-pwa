@@ -215,9 +215,15 @@ export default function RideTracking() {
       });
 
       if (response.ok) {
+        // Check if this is a QR code booking to show appropriate message
+        const ride = await fetch(`${VITE_API_BASE_URL}/api/rides/${params?.rideId}`).then(r => r.json());
+        const isQRBooking = ride?.created_via_qr;
+        
         toast({
           title: "Payment Successful!",
-          description: "Your payment has been processed successfully.",
+          description: isQRBooking 
+            ? "Driver has been assigned to your ride!" 
+            : "Your payment has been processed successfully.",
         });
         
         // Refresh ride data to show updated status
