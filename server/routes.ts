@@ -7,7 +7,7 @@ import {
   insertPaymentMethodSchema,
   insertRideSchema,
   insertYahMessageSchema,
-  insertDriverReportSchema,
+  insertReportSchema,
   insertRideCategorySchema,
   insertRideTypeSchema,
   insertCustomerSchema,
@@ -448,10 +448,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Optionally store a driver report (attachments ignored for now)
       try {
-        await storage.createDriverReport({
-          ride_id: id as any,
+        await storage.createReport({
+          driverId: (ride as any).driver_id as any,
+          rideId: id as any,
+          customerId: (ride as any).customer_id as any,
+          reportedBy: 'customer',
+          customReason: reason as any,
           description: reason as any,
-          images: (attachments as any) || [],
+          hasMedia: false,
+          status: 'pending',
         } as any);
       } catch {}
 
@@ -1115,17 +1120,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Driver report routes
-  app.post("/api/reports/driver", async (req, res) => {
+  // Violation types routes
+  app.get("/api/violation-types", async (req, res) => {
     try {
-      const reportData = insertDriverReportSchema.parse(req.body);
-      const report = await storage.createDriverReport(reportData);
+      const violationTypes = await storage.getViolationTypes();
+      res.json({ violationTypes });
+    } catch (error: any) {
+      console.error("Violation types fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch violation types" });
+    }
+  });
+
+  // Report routes (for both driver and customer reports)
+  app.post("/api/reports", async (req, res) => {
+    try {
+      const reportData = insertReportSchema.parse(req.body);
+      const report = await storage.createReport(reportData);
 
       // TODO: Send notification to admin
 
       res.json({ report });
     } catch (error: any) {
-      console.error("Driver report error:", error);
+      console.error("Report error:", error);
       res
         .status(400)
         .json({ message: error.message || "Failed to create report" });
